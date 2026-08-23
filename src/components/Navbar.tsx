@@ -32,6 +32,9 @@ interface NavbarProps {
   user: User | null;
   spreadsheetId: string | null;
   spreadsheetUrl: string | null;
+  webhookUrl: string | null;
+  autoSyncEnabled: boolean;
+  lastSyncTime: string | null;
   isSyncing: boolean;
   onOpenSyncModal: () => void;
   onOpenFormulaModal: () => void;
@@ -56,6 +59,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   user,
   spreadsheetId,
   spreadsheetUrl,
+  webhookUrl,
+  autoSyncEnabled,
+  lastSyncTime,
   isSyncing,
   onOpenSyncModal,
   onOpenFormulaModal,
@@ -186,44 +192,54 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             )}
 
-            {/* Google Sheets Connection Badge / Button - Only visible to Admin */}
-            {userRole === 'admin' && (
-              spreadsheetId ? (
-                <div className="flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-500/50 rounded-lg px-2.5 py-1.5 text-xs text-emerald-200">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="hidden md:inline font-semibold">เชื่อมต่อ Sheets แล้ว</span>
-                  <button
-                    onClick={onSyncNow}
-                    disabled={isSyncing}
-                    title="กดเพื่อส่งข้อมูลบนเว็บขึ้นอัปเดตใน Google Sheet ทันที"
-                    className="hover:text-emerald-100 p-0.5 transition-transform"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-emerald-400' : ''}`} />
-                  </button>
-                  {spreadsheetUrl && (
-                    <a
-                      href={spreadsheetUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      title="เปิดดูใน Google Sheets"
-                      className="hover:text-white p-0.5 text-emerald-400 hover:text-emerald-200"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  )}
-                </div>
-              ) : (
+            {/* Google Sheets Connection Badge / Button */}
+            {webhookUrl || spreadsheetId ? (
+              <div className="flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-500/50 rounded-lg px-2.5 py-1.5 text-xs text-emerald-200">
+                <span className={`w-2 h-2 rounded-full ${autoSyncEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden md:inline font-semibold">
+                  {autoSyncEnabled ? 'ซิงค์ Sheets อัตโนมัติ' : 'เชื่อมต่อ Sheets แล้ว'}
+                  {lastSyncTime && <span className="text-[10px] text-emerald-300/80 font-normal ml-1">({lastSyncTime})</span>}
+                </span>
                 <button
-                  onClick={onOpenSyncModal}
-                  id="btn-connect-sheets"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-900/30 transition-all hover:scale-105"
-                  title="กดเพื่อเชื่อมต่อและสร้าง Google Sheet สำหรับเก็บข้อมูล"
+                  onClick={onSyncNow}
+                  disabled={isSyncing}
+                  title="กดเพื่อส่งข้อมูลบนเว็บขึ้นอัปเดตใน Google Sheet ทันที"
+                  className="hover:text-emerald-100 p-0.5 transition-transform"
                 >
-                  <FileSpreadsheet className="w-4 h-4" />
-                  <span className="font-semibold">เชื่อมต่อ Sheets</span>
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-emerald-400' : ''}`} />
                 </button>
-              )
+                {spreadsheetUrl && (
+                  <a
+                    href={spreadsheetUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="เปิดดูใน Google Sheets"
+                    className="hover:text-white p-0.5 text-emerald-400 hover:text-emerald-200"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+                {userRole === 'admin' && (
+                  <button
+                    onClick={onOpenSyncModal}
+                    title="ตั้งค่าการเชื่อมต่อ Google Sheets"
+                    className="text-[10px] text-emerald-300 hover:underline ml-1"
+                  >
+                    ตั้งค่า
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={onOpenSyncModal}
+                id="btn-connect-sheets"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-900/30 transition-all hover:scale-105"
+                title="กดเพื่อเชื่อมต่อและตั้งค่า Google Sheet สำหรับเก็บข้อมูลอัตโนมัติ"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span className="font-semibold">เชื่อมต่อ Sheets (Auto-Sync)</span>
+              </button>
             )}
 
             {/* User Account / Google Sign In */}

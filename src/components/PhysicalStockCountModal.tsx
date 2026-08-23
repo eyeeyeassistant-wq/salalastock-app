@@ -117,14 +117,21 @@ export const PhysicalStockCountModal: React.FC<PhysicalStockCountModalProps> = (
       } else {
         // Pre-fill with calculated system ending stock as a starting baseline
         const countMap: { [rmCode: string]: string } = {};
-        systemSummaries.forEach((s) => {
+        const activeSummaries = generateMonthlySummaryForPeriod(
+          materials || [],
+          recipes || [],
+          productions || [],
+          transactions || [],
+          targetMonth
+        );
+        activeSummaries.forEach((s) => {
           countMap[s.RM_Code] = (s.Ending_Stock ?? 0).toString();
         });
         setCounts(countMap);
         setItemNotes({});
       }
     }
-  }, [isOpen, existingRecord, selectedMonth, availableMonths]);
+  }, [isOpen, existingRecord, selectedMonth, availableMonths, materials, recipes, productions, transactions]);
 
   if (!isOpen) return null;
 

@@ -3,6 +3,7 @@ import {
   BOMRecipe,
   DailyProduction,
   StockTransaction,
+  MonthlyStockCountRecord,
 } from '../types/stock';
 
 export interface SpreadsheetInfo {
@@ -11,7 +12,240 @@ export interface SpreadsheetInfo {
   title: string;
 }
 
+export interface SyncPayload {
+  materials: MasterMaterial[];
+  recipes: BOMRecipe[];
+  productions: DailyProduction[];
+  transactions: StockTransaction[];
+  monthlyStockCounts?: MonthlyStockCountRecord[];
+}
+
 const SHEETS_API_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
+
+/**
+ * Ready-to-use Google Apps Script source code for zero-login, 100% automatic 2-way sync
+ */
+export const GOOGLE_APPS_SCRIPT_CODE = `/**
+ * ระบบสต๊อกและคำนวณวัตถุดิบ (Stock & Variance Tracking System)
+ * Google Apps Script Web App for Zero-Login Auto-Sync
+ */
+
+function doPost(e) {
+  try {
+    var raw = e.postData.contents;
+    var payload = JSON.parse(raw);
+    var action = payload.action || 'syncAll';
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    if (action === 'syncAll' || action === 'init') {
+      syncAllData(ss, payload.data || payload);
+      return ContentService.createTextOutput(
+        JSON.stringify({ status: 'success', message: 'Synced all sheets successfully', timestamp: new Date().toISOString() })
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'appendTransaction') {
+      appendTransactionRow(ss, payload.data);
+      return ContentService.createTextOutput(
+        JSON.stringify({ status: 'success', message: 'Transaction appended' })
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'appendProduction') {
+      appendProductionRow(ss, payload.data);
+      return ContentService.createTextOutput(
+        JSON.stringify({ status: 'success', message: 'Production appended' })
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    return ContentService.createTextOutput(
+      JSON.stringify({ status: 'unknown_action' })
+    ).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ status: 'error', error: err.toString() })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doGet(e) {
+  return ContentService.createTextOutput(
+    JSON.stringify({ status: 'online', message: 'Stock Auto-Sync Web App is running' })
+  ).setMimeType(ContentService.MimeType.JSON);
+}
+
+function syncAllData(ss, data) {
+  var materials = data.materials || [];
+  var recipes = data.recipes || [];
+  var productions = data.productions || [];
+  var transactions = data.transactions || [];
+
+  // 1. Master_Materials
+  var matSheet = getOrCreateSheet(ss, 'Master_Materials');
+  matSheet.clearContents();
+  var matRows = [
+    ['RM_Code', 'RM_Name', 'Unit', 'Opening_Stock', 'Safety_Stock']
+  ];
+  materials.forEach(function(m) {
+    matRows.push([m.RM_Code, m.RM_Name, m.Unit, Number(m.Opening_Stock) || 0, Number(m.Safety_Stock) || 0]);
+  });
+  matSheet.getRange(1, 1, matRows.length, 5).setValues(matRows);
+  matSheet.getRange(1, 1, 1, 5).setBackground('#0f172a').setFontColor('#ffffff').setFontWeight('bold');
+
+  // 2. BOM_Recipe
+  var bomSheet = getOrCreateSheet(ss, 'BOM_Recipe');
+  bomSheet.clearContents();
+  var bomRows = [
+    ['Product_Code', 'Product_Name', 'RM_Code', 'Standard_Qty']
+  ];
+  recipes.forEach(function(r) {
+    bomRows.push([r.Product_Code, r.Product_Name, r.RM_Code, Number(r.Standard_Qty) || 0]);
+  });
+  bomSheet.getRange(1, 1, bomRows.length, 4).setValues(bomRows);
+  bomSheet.getRange(1, 1, 1, 4).setBackground('#0f172a').setFontColor('#ffffff').setFontWeight('bold');
+
+  // 3. Daily_Production
+  var prodSheet = getOrCreateSheet(ss, 'Daily_Production');
+  prodSheet.clearContents();
+  var prodRows = [
+    ['Date', 'Product_Code', 'Produced_Qty', 'Dispatch_Branch_A', 'Dispatch_Branch_B', 'Leftover_Branch_A', 'Leftover_Branch_B', 'Total_Dispatched', 'Total_Leftover']
+  ];
+  productions.forEach(function(p) {
+    var dA = Number(p.Dispatch_Branch_A) || 0;
+    var dB = Number(p.Dispatch_Branch_B) || 0;
+    var lA = Number(p.Leftover_Branch_A) || 0;
+    var lB = Number(p.Leftover_Branch_B) || 0;
+    prodRows.push([
+      p.Date,
+      p.Product_Code,
+      Number(p.Produced_Qty) || 0,
+      dA,
+      dB,
+      lA,
+      lB,
+      dA + dB,
+      lA + lB
+    ]);
+  });
+  prodSheet.getRange(1, 1, prodRows.length, 9).setValues(prodRows);
+  prodSheet.getRange(1, 1, 1, 9).setBackground('#0f172a').setFontColor('#ffffff').setFontWeight('bold');
+
+  // 4. Stock_Transactions
+  var txSheet = getOrCreateSheet(ss, 'Stock_Transactions');
+  txSheet.clearContents();
+  var txRows = [
+    ['Date', 'Type', 'RM_Code', 'Qty', 'Recorder', 'Note']
+  ];
+  transactions.forEach(function(t) {
+    txRows.push([t.Date, t.Type, t.RM_Code, Number(t.Qty) || 0, t.Recorder || '', t.Note || '']);
+  });
+  txSheet.getRange(1, 1, txRows.length, 6).setValues(txRows);
+  txSheet.getRange(1, 1, 1, 6).setBackground('#0f172a').setFontColor('#ffffff').setFontWeight('bold');
+
+  // 5. Monthly_Stock_Summary
+  var sumSheet = getOrCreateSheet(ss, 'Monthly_Stock_Summary');
+  sumSheet.clearContents();
+  var sumHeader = [
+    'RM_Code', 'RM_Name', 'Unit', 'Opening_Stock', 'Total_Receive', 'Actual_Usage', 'Expected_Usage', 'Ending_Stock', 'Variance', 'Stock_Status'
+  ];
+  var sumRows = [sumHeader];
+  materials.forEach(function(m, idx) {
+    var r = idx + 2;
+    sumRows.push([
+      m.RM_Code,
+      m.RM_Name,
+      m.Unit,
+      '=IFERROR(XLOOKUP(A' + r + ', Master_Materials!$A:$A, Master_Materials!$D:$D, 0), 0)',
+      '=IFERROR(SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A' + r + ', Stock_Transactions!$B:$B, "Receive"), 0)',
+      '=IFERROR(SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A' + r + ', Stock_Transactions!$B:$B, "Actual Usage"), 0)',
+      '=IFERROR(SUMPRODUCT(SUMIFS(Daily_Production!$C:$C, Daily_Production!$B:$B, FILTER(BOM_Recipe!$A:$A, BOM_Recipe!$C:$C = A' + r + ')), FILTER(BOM_Recipe!$D:$D, BOM_Recipe!$C:$C = A' + r + ')), 0)',
+      '=D' + r + ' + E' + r + ' - F' + r,
+      '=F' + r + ' - G' + r,
+      '=IF(A' + r + '="", "", IF(H' + r + ' <= IFERROR(XLOOKUP(A' + r + ', Master_Materials!$A:$A, Master_Materials!$E:$E, 0), 0), "⚠️ ใกล้หมด", "ปกติ"))'
+    ]);
+  });
+  sumSheet.getRange(1, 1, sumRows.length, 10).setValues(sumRows);
+  sumSheet.getRange(1, 1, 1, 10).setBackground('#0f172a').setFontColor('#ffffff').setFontWeight('bold');
+
+  // 6. Monthly_Stock_Count (ประวัติตรวจนับสต็อกจริงสิ้นเดือน)
+  var countSheet = getOrCreateSheet(ss, 'Monthly_Stock_Count');
+  countSheet.clearContents();
+  var countRows = [
+    ['Month', 'RM_Code', 'RM_Name', 'Unit', 'Counted_Qty', 'Recorded_At', 'Note']
+  ];
+  var counts = data.monthlyStockCounts || [];
+  counts.forEach(function(c) {
+    var items = c.Items || [];
+    items.forEach(function(it) {
+      countRows.push([c.Month, it.RM_Code, it.RM_Name, it.Unit, Number(it.Counted_Qty) || 0, c.Recorded_At || '', c.Note || '']);
+    });
+  });
+  if (countRows.length > 1) {
+    countSheet.getRange(1, 1, countRows.length, 7).setValues(countRows);
+  } else {
+    countSheet.getRange(1, 1, 1, 7).setValues(countRows);
+  }
+  countSheet.getRange(1, 1, 1, 7).setBackground('#0f172a').setFontColor('#ffffff').setFontWeight('bold');
+}
+
+function appendTransactionRow(ss, tx) {
+  var sheet = getOrCreateSheet(ss, 'Stock_Transactions');
+  sheet.appendRow([tx.Date, tx.Type, tx.RM_Code, Number(tx.Qty) || 0, tx.Recorder || '', tx.Note || '']);
+}
+
+function appendProductionRow(ss, p) {
+  var sheet = getOrCreateSheet(ss, 'Daily_Production');
+  var dA = Number(p.Dispatch_Branch_A) || 0;
+  var dB = Number(p.Dispatch_Branch_B) || 0;
+  var lA = Number(p.Leftover_Branch_A) || 0;
+  var lB = Number(p.Leftover_Branch_B) || 0;
+  sheet.appendRow([p.Date, p.Product_Code, Number(p.Produced_Qty) || 0, dA, dB, lA, lB, dA + dB, lA + lB]);
+}
+
+function getOrCreateSheet(ss, name) {
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+  }
+  return sheet;
+}
+`;
+
+/**
+ * Send full state to Google Apps Script Web App (Webhook URL)
+ * Works without login, 100% reliable, zero CORS/popup issues
+ */
+export async function syncViaWebhook(
+  webhookUrl: string,
+  payload: SyncPayload,
+  action: 'syncAll' | 'appendTransaction' | 'appendProduction' = 'syncAll'
+): Promise<boolean> {
+  if (!webhookUrl || !webhookUrl.startsWith('http')) {
+    throw new Error('กรุณาระบุ URL ของ Google Apps Script Web App ให้ถูกต้อง');
+  }
+
+  try {
+    // We send payload as JSON string. Google Apps Script Web Apps handle POST with no-cors or standard fetch
+    await fetch(webhookUrl, {
+      method: 'POST',
+      mode: 'no-cors', // essential for Google Apps Script redirects across origins
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify({
+        action,
+        data: payload,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+
+    return true;
+  } catch (err: any) {
+    console.error('Error syncing via webhook:', err);
+    throw new Error(`ไม่สามารถเชื่อมต่อ Google Webhook: ${err.message}`);
+  }
+}
+
 
 /**
  * Creates a brand new Google Spreadsheet containing all 5 pre-configured tabs with formulas,

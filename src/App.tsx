@@ -33,6 +33,7 @@ import {
   fetchAllSheetData,
   appendTransactionToSheet,
   appendProductionToSheet,
+  syncViaWebhook,
 } from './services/googleSheets';
 
 // Components
@@ -106,8 +107,72 @@ export default function App() {
   const [spreadsheetUrl, setSpreadsheetUrl] = useState<string | null>(() => {
     return localStorage.getItem('stock_spreadsheet_url') || null;
   });
+  const [webhookUrl, setWebhookUrl] = useState<string | null>(() => {
+    return localStorage.getItem('stock_webhook_url') || null;
+  });
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('stock_auto_sync') !== 'false';
+  });
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(() => {
+    return localStorage.getItem('stock_last_sync') || null;
+  });
   const [isSyncing, setIsSyncing] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
+
+  // Background Auto-Sync Trigger
+  const triggerAutoSync = async (overrides?: {
+    materials?: MasterMaterial[];
+    recipes?: BOMRecipe[];
+    productions?: DailyProduction[];
+    transactions?: StockTransaction[];
+    stockCountRecords?: MonthlyStockCountRecord[];
+  }) => {
+    const isAuto = localStorage.getItem('stock_auto_sync') !== 'false';
+    if (!isAuto) return;
+
+    const currentWebhook = webhookUrl || localStorage.getItem('stock_webhook_url');
+    const currentSheetId = spreadsheetId || localStorage.getItem('stock_spreadsheet_id');
+
+    if (!currentWebhook && !currentSheetId) return;
+
+    const curMats = overrides?.materials || materials;
+    const curRecipes = overrides?.recipes || recipes;
+    const curProds = overrides?.productions || productions;
+    const curTxs = overrides?.transactions || transactions;
+    const curCounts = overrides?.stockCountRecords || stockCountRecords;
+
+    try {
+      if (currentWebhook) {
+        await syncViaWebhook(currentWebhook, {
+          materials: curMats,
+          recipes: curRecipes,
+          productions: curProds,
+          transactions: curTxs,
+          monthlyStockCounts: curCounts,
+        }, 'syncAll');
+        const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+        setLastSyncTime(nowStr);
+        localStorage.setItem('stock_last_sync', nowStr);
+      } else if (currentSheetId) {
+        const currentToken = token || (await getAccessToken());
+        if (currentToken) {
+          await initializeSheetDataAndFormulas(
+            currentToken,
+            currentSheetId,
+            curMats,
+            curRecipes,
+            curProds,
+            curTxs
+          );
+          const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+          setLastSyncTime(nowStr);
+          localStorage.setItem('stock_last_sync', nowStr);
+        }
+      }
+    } catch (err) {
+      console.warn('Auto-sync background update notice:', err);
+    }
+  };
 
   // Modal Visibility State
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
@@ -131,13 +196,16 @@ export default function App() {
 
   // Stock count handler (physical count roll-over)
   const handleSaveStockCount = (record: MonthlyStockCountRecord, applyAsOpeningStock: boolean) => {
+    let nextStockCounts: MonthlyStockCountRecord[] = [];
     setStockCountRecords((prev) => {
       const filtered = prev.filter((r) => r.id !== record.id && r.Month !== record.Month);
       const updated = [...filtered, record];
+      nextStockCounts = updated;
       localStorage.setItem('stock_count_records', JSON.stringify(updated));
       return updated;
     });
 
+    let nextMats = materials;
     if (applyAsOpeningStock) {
       setMaterials((prev) => {
         const updated = prev.map((m) => {
@@ -147,6 +215,7 @@ export default function App() {
           }
           return m;
         });
+        nextMats = updated;
         localStorage.setItem('stock_materials', JSON.stringify(updated));
         return updated;
       });
@@ -154,6 +223,8 @@ export default function App() {
     } else {
       showNotification(`✅ บันทึกผลการตรวจนับจริงประจำเดือน ${record.Month} เรียบร้อยแล้ว`);
     }
+
+    triggerAutoSync({ stockCountRecords: nextStockCounts, materials: nextMats });
   };
 
   // Clear data handler
@@ -163,23 +234,38 @@ export default function App() {
     clearMaterials: boolean;
     clearRecipes: boolean;
   }) => {
+    let nextTxs = transactions;
+    let nextProds = productions;
+    let nextMats = materials;
+    let nextRecipes = recipes;
+
     if (options.clearTransactions) {
+      nextTxs = [];
       setTransactions([]);
       localStorage.removeItem('stock_transactions');
     }
     if (options.clearProductions) {
+      nextProds = [];
       setProductions([]);
       localStorage.removeItem('stock_productions');
     }
     if (options.clearMaterials) {
+      nextMats = [];
       setMaterials([]);
       localStorage.removeItem('stock_materials');
     }
     if (options.clearRecipes) {
+      nextRecipes = [];
       setRecipes([]);
       localStorage.removeItem('stock_recipes');
     }
     showNotification('🗑️ เคลียร์ข้อมูลที่เลือกเรียบร้อยแล้ว พร้อมกรอกข้อมูลจริง');
+    triggerAutoSync({
+      materials: nextMats,
+      recipes: nextRecipes,
+      productions: nextProds,
+      transactions: nextTxs,
+    });
   };
 
   // Restore sample data handler
@@ -189,40 +275,53 @@ export default function App() {
     setProductions(INITIAL_DAILY_PRODUCTION);
     setTransactions(INITIAL_TRANSACTIONS);
     showNotification('✨ โหลดข้อมูลตัวอย่างกลับมาเรียบร้อยแล้ว');
+    triggerAutoSync({
+      materials: INITIAL_MATERIALS,
+      recipes: INITIAL_RECIPES,
+      productions: INITIAL_DAILY_PRODUCTION,
+      transactions: INITIAL_TRANSACTIONS,
+    });
   };
 
   // Single item deletion handlers
   const handleDeleteMaterial = (rmCode: string) => {
-    setMaterials((prev) => prev.filter((m) => m.RM_Code !== rmCode));
-    setRecipes((prev) => prev.filter((r) => r.RM_Code !== rmCode));
+    const nextMats = materials.filter((m) => m.RM_Code !== rmCode);
+    const nextRecipes = recipes.filter((r) => r.RM_Code !== rmCode);
+    setMaterials(nextMats);
+    setRecipes(nextRecipes);
     showNotification(`ลบวัตถุดิบ ${rmCode} เรียบร้อยแล้ว`);
+    triggerAutoSync({ materials: nextMats, recipes: nextRecipes });
   };
 
   const handleDeleteRecipeItem = (productCode: string, rmCode: string) => {
-    setRecipes((prev) =>
-      prev.filter((r) => !(r.Product_Code === productCode && r.RM_Code === rmCode))
-    );
+    const nextRecipes = recipes.filter((r) => !(r.Product_Code === productCode && r.RM_Code === rmCode));
+    setRecipes(nextRecipes);
     showNotification(`ลบส่วนผสม ${rmCode} ออกจากสูตร ${productCode} เรียบร้อยแล้ว`);
+    triggerAutoSync({ recipes: nextRecipes });
   };
 
   const handleDeleteProduction = (index: number) => {
-    setProductions((prev) => prev.filter((_, idx) => idx !== index));
+    const nextProds = productions.filter((_, idx) => idx !== index);
+    setProductions(nextProds);
     showNotification('ลบรายการผลิตเรียบร้อยแล้ว');
+    triggerAutoSync({ productions: nextProds });
   };
 
   const handleDeleteTransaction = (index: number) => {
-    setTransactions((prev) => prev.filter((_, idx) => idx !== index));
+    const nextTxs = transactions.filter((_, idx) => idx !== index);
+    setTransactions(nextTxs);
     showNotification('ลบรายการประวัติสต๊อกเรียบร้อยแล้ว');
+    triggerAutoSync({ transactions: nextTxs });
   };
 
   const handleSaveOpeningStocks = (updated: { RM_Code: string; Opening_Stock: number }[]) => {
-    setMaterials((prev) =>
-      prev.map((m) => {
-        const match = updated.find((u) => u.RM_Code === m.RM_Code);
-        return match ? { ...m, Opening_Stock: match.Opening_Stock } : m;
-      })
-    );
+    const nextMats = materials.map((m) => {
+      const match = updated.find((u) => u.RM_Code === m.RM_Code);
+      return match ? { ...m, Opening_Stock: match.Opening_Stock } : m;
+    });
+    setMaterials(nextMats);
     showNotification('✅ บันทึกยอดยกมาต้นเดือนเรียบร้อยแล้ว');
+    triggerAutoSync({ materials: nextMats });
   };
 
   // Save to localStorage whenever core data changes
@@ -328,6 +427,46 @@ export default function App() {
     showNotification('ออกจากระบบเรียบร้อย');
   };
 
+  // Webhook Configuration Handler
+  const handleSaveWebhookUrl = async (url: string) => {
+    setIsSyncing(true);
+    try {
+      await syncViaWebhook(url, {
+        materials,
+        recipes,
+        productions,
+        transactions,
+        monthlyStockCounts: stockCountRecords,
+      }, 'syncAll');
+
+      setWebhookUrl(url);
+      localStorage.setItem('stock_webhook_url', url);
+      const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+      setLastSyncTime(nowStr);
+      localStorage.setItem('stock_last_sync', nowStr);
+      confetti({
+        particleCount: 70,
+        spread: 50,
+        origin: { y: 0.6 },
+      });
+      showNotification('⚡ เชื่อมต่อ Google Apps Script Webhook และซิงค์ข้อมูลสำเร็จ!');
+    } catch (err: any) {
+      console.error(err);
+      throw err;
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleToggleAutoSync = (enabled: boolean) => {
+    setAutoSyncEnabled(enabled);
+    localStorage.setItem('stock_auto_sync', enabled ? 'true' : 'false');
+    showNotification(enabled ? '🟢 เปิดการซิงค์อัตโนมัติเข้า Google Sheet แล้ว' : '⏸️ ปิดการซิงค์อัตโนมัติชั่วคราว');
+    if (enabled) {
+      triggerAutoSync();
+    }
+  };
+
   // Create New Spreadsheet in user's Drive
   const handleCreateNewSheet = async () => {
     let currentToken = token || (await getAccessToken());
@@ -359,6 +498,9 @@ export default function App() {
       setSpreadsheetUrl(sheetInfo.spreadsheetUrl);
       localStorage.setItem('stock_spreadsheet_id', sheetInfo.spreadsheetId);
       localStorage.setItem('stock_spreadsheet_url', sheetInfo.spreadsheetUrl);
+      const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+      setLastSyncTime(nowStr);
+      localStorage.setItem('stock_last_sync', nowStr);
 
       confetti({
         particleCount: 80,
@@ -403,6 +545,9 @@ export default function App() {
       setSpreadsheetUrl(url);
       localStorage.setItem('stock_spreadsheet_id', sheetId);
       localStorage.setItem('stock_spreadsheet_url', url);
+      const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+      setLastSyncTime(nowStr);
+      localStorage.setItem('stock_last_sync', nowStr);
 
       showNotification('✅ เชื่อมต่อและส่งข้อมูลขึ้น Google Sheet สำเร็จแล้ว!');
     } catch (err: any) {
@@ -413,36 +558,58 @@ export default function App() {
     }
   };
 
-  // Push local data up to Google Sheets (One-Way Export to Google Drive)
+  // Push local data up to Google Sheets (One-Way Export to Google Drive or Webhook)
   const handlePushAllToSheet = async () => {
-    if (!spreadsheetId) {
+    const currentWebhook = webhookUrl || localStorage.getItem('stock_webhook_url');
+    const currentSheetId = spreadsheetId || localStorage.getItem('stock_spreadsheet_id');
+
+    if (!currentWebhook && !currentSheetId) {
       setIsSyncModalOpen(true);
       return;
     }
 
-    let currentToken = token || (await getAccessToken());
-    if (!currentToken) {
-      const res = await googleSignIn();
-      if (!res) return;
-      currentToken = res.accessToken;
-      setUser(res.user);
-      setToken(res.accessToken);
-    }
-
     setIsSyncing(true);
     try {
-      await initializeSheetDataAndFormulas(
-        currentToken,
-        spreadsheetId,
-        materials,
-        recipes,
-        productions,
-        transactions
-      );
+      if (currentWebhook) {
+        await syncViaWebhook(currentWebhook, {
+          materials,
+          recipes,
+          productions,
+          transactions,
+          monthlyStockCounts: stockCountRecords,
+        }, 'syncAll');
+      }
+
+      if (currentSheetId) {
+        let currentToken = token || (await getAccessToken());
+        if (!currentToken && !currentWebhook) {
+          const res = await googleSignIn();
+          if (res) {
+            currentToken = res.accessToken;
+            setUser(res.user);
+            setToken(res.accessToken);
+          }
+        }
+
+        if (currentToken) {
+          await initializeSheetDataAndFormulas(
+            currentToken,
+            currentSheetId,
+            materials,
+            recipes,
+            productions,
+            transactions
+          );
+        }
+      }
+
+      const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+      setLastSyncTime(nowStr);
+      localStorage.setItem('stock_last_sync', nowStr);
       showNotification('✅ ส่งข้อมูลจริงทั้งหมดขึ้น Google Sheet สำเร็จแล้ว!');
     } catch (err: any) {
       console.error(err);
-      alert(`การส่งข้อมูลขึ้น Google Sheet ล้มเหลว: ${err.message}`);
+      showNotification(`⚠️ ซิงค์ข้อมูลขัดข้อง: ${err.message}`);
     } finally {
       setIsSyncing(false);
     }
@@ -453,49 +620,63 @@ export default function App() {
     if (window.confirm('คุณต้องการยกเลิกการเชื่อมต่อกับ Google Sheet นี้ใช่หรือไม่? (ข้อมูลในเว็บและในชีทจะไม่ถูกลบ)')) {
       setSpreadsheetId(null);
       setSpreadsheetUrl(null);
+      setWebhookUrl(null);
+      setLastSyncTime(null);
       localStorage.removeItem('stock_spreadsheet_id');
       localStorage.removeItem('stock_spreadsheet_url');
+      localStorage.removeItem('stock_webhook_url');
+      localStorage.removeItem('stock_last_sync');
       showNotification('ยกเลิกการเชื่อมต่อกับ Google Sheet เรียบร้อย');
     }
   };
 
   // 1. Add Material
   const handleAddMaterial = (mat: MasterMaterial) => {
-    setMaterials((prev) => [...prev, mat]);
+    const nextMats = [...materials, mat];
+    setMaterials(nextMats);
     showNotification(`เพิ่มวัตถุดิบ ${mat.RM_Name} เรียบร้อยแล้ว`);
+    triggerAutoSync({ materials: nextMats });
   };
 
   // 2. Update Material
   const handleUpdateMaterial = (mat: MasterMaterial) => {
-    setMaterials((prev) =>
-      prev.map((item) => (item.RM_Code === mat.RM_Code ? mat : item))
-    );
+    const nextMats = materials.map((item) => (item.RM_Code === mat.RM_Code ? mat : item));
+    setMaterials(nextMats);
     showNotification(`อัปเดตข้อมูล ${mat.RM_Name} สำเร็จ`);
+    triggerAutoSync({ materials: nextMats });
   };
 
   // 3. Add Recipe Item
   const handleAddRecipe = (recipe: BOMRecipe) => {
-    setRecipes((prev) => [...prev, recipe]);
+    const nextRecipes = [...recipes, recipe];
+    setRecipes(nextRecipes);
     showNotification(`เพิ่มสูตรสำหรับสินค้า ${recipe.Product_Name} เรียบร้อย`);
+    triggerAutoSync({ recipes: nextRecipes });
   };
 
   // 4. Save/Edit Transaction
   const handleSaveTransaction = async (tx: StockTransaction) => {
+    let nextTxs: StockTransaction[] = [];
     if (editingTransaction !== null) {
       const editIdx = editingTransaction.index;
       setTransactions((prev) => {
         const next = [...prev];
         next[editIdx] = tx;
+        nextTxs = next;
         return next;
       });
       setEditingTransaction(null);
       showNotification(`แก้ไขข้อมูล ${tx.Type} (${tx.RM_Code}) เรียบร้อยแล้ว`);
     } else {
-      setTransactions((prev) => [tx, ...prev]);
+      setTransactions((prev) => {
+        const next = [tx, ...prev];
+        nextTxs = next;
+        return next;
+      });
       showNotification(`บันทึก ${tx.Type} สำหรับ ${tx.RM_Code} สำเร็จ`);
 
-      // Sync to Google Sheet if connected
-      if (spreadsheetId) {
+      // Legacy single row append if OAuth sheet connected
+      if (spreadsheetId && !webhookUrl) {
         try {
           const currentToken = token || (await getAccessToken());
           if (currentToken) {
@@ -506,6 +687,8 @@ export default function App() {
         }
       }
     }
+
+    triggerAutoSync({ transactions: nextTxs });
   };
 
   const handleEditTransaction = (tx: StockTransaction, index: number) => {
@@ -517,18 +700,25 @@ export default function App() {
   // 5. Save/Edit Daily Production (with optional Auto-Deduct)
   const handleSaveProduction = async (prod: DailyProduction, autoDeduct: boolean) => {
     const fullProd = calculateProductionRowTotals(prod);
+    let nextProds: DailyProduction[] = [];
+    let nextTxs = transactions;
 
     if (editingProduction !== null) {
       const editIdx = editingProduction.index;
       setProductions((prev) => {
         const next = [...prev];
         next[editIdx] = fullProd;
+        nextProds = next;
         return next;
       });
       setEditingProduction(null);
       showNotification(`แก้ไขข้อมูลการผลิต ${fullProd.Product_Code} วันที่ ${fullProd.Date} สำเร็จ`);
     } else {
-      setProductions((prev) => [fullProd, ...prev]);
+      setProductions((prev) => {
+        const next = [fullProd, ...prev];
+        nextProds = next;
+        return next;
+      });
 
       // If auto-deduct is enabled: generate Actual Usage transactions for all recipe ingredients
       if (autoDeduct) {
@@ -543,7 +733,11 @@ export default function App() {
         }));
 
         if (newAutoTxs.length > 0) {
-          setTransactions((prev) => [...newAutoTxs, ...prev]);
+          setTransactions((prev) => {
+            const next = [...newAutoTxs, ...prev];
+            nextTxs = next;
+            return next;
+          });
         }
         showNotification(
           `บันทึกยอดผลิต ${prod.Product_Code} (${prod.Produced_Qty} ชิ้น) และตัดสต็อกวัตถุดิบ ${newAutoTxs.length} รายการอัตโนมัติ!`
@@ -552,8 +746,8 @@ export default function App() {
         showNotification(`บันทึกยอดผลิต ${prod.Product_Code} (${prod.Produced_Qty} ชิ้น) เรียบร้อย`);
       }
 
-      // Sync to Google Sheet if connected
-      if (spreadsheetId) {
+      // Legacy single row append if OAuth sheet connected
+      if (spreadsheetId && !webhookUrl) {
         try {
           const currentToken = token || (await getAccessToken());
           if (currentToken) {
@@ -564,6 +758,8 @@ export default function App() {
         }
       }
     }
+
+    triggerAutoSync({ productions: nextProds, transactions: nextTxs });
   };
 
   const handleEditProduction = (prod: DailyProduction, index: number) => {
@@ -588,8 +784,10 @@ export default function App() {
       Note: `ตัดสต็อกย้อนหลังจากยอดผลิต ${prod.Product_Code} วันที่ ${prod.Date}`,
     }));
 
-    setTransactions((prev) => [...newAutoTxs, ...prev]);
+    const nextTxs = [...newAutoTxs, ...transactions];
+    setTransactions(nextTxs);
     showNotification(`ตัดสต็อกวัตถุดิบ ${newAutoTxs.length} รายการตามสูตร BOM เรียบร้อยแล้ว!`);
+    triggerAutoSync({ transactions: nextTxs });
   };
 
   // Calculate live summaries
@@ -618,6 +816,9 @@ export default function App() {
         user={user}
         spreadsheetId={spreadsheetId}
         spreadsheetUrl={spreadsheetUrl}
+        webhookUrl={webhookUrl}
+        autoSyncEnabled={autoSyncEnabled}
+        lastSyncTime={lastSyncTime}
         isSyncing={isSyncing}
         onOpenSyncModal={() => {
           if (!isAdminAuthenticated) {
@@ -859,7 +1060,11 @@ export default function App() {
         user={user}
         spreadsheetId={spreadsheetId}
         spreadsheetUrl={spreadsheetUrl}
+        webhookUrl={webhookUrl}
+        autoSyncEnabled={autoSyncEnabled}
+        onToggleAutoSync={handleToggleAutoSync}
         isSyncing={isSyncing}
+        onSaveWebhookUrl={handleSaveWebhookUrl}
         onSignIn={handleSignIn}
         onCreateNewSheet={handleCreateNewSheet}
         onLinkExistingSheet={handleLinkExistingSheet}
