@@ -26,6 +26,9 @@ interface NavbarProps {
   setActiveTab: (tab: ActiveTab) => void;
   userRole: UserRole;
   setUserRole: (role: UserRole) => void;
+  isAdminAuthenticated: boolean;
+  onRequestAdminAuth: () => void;
+  onLockAdmin: () => void;
   user: User | null;
   spreadsheetId: string | null;
   spreadsheetUrl: string | null;
@@ -47,6 +50,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   setActiveTab,
   userRole,
   setUserRole,
+  isAdminAuthenticated,
+  onRequestAdminAuth,
+  onLockAdmin,
   user,
   spreadsheetId,
   spreadsheetUrl,
@@ -62,6 +68,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSignOut,
   lowStockCount,
 }) => {
+  const handleAdminRoleClick = () => {
+    if (isAdminAuthenticated) {
+      setUserRole('admin');
+    } else {
+      onRequestAdminAuth();
+    }
+  };
   return (
     <header className="bg-[#0f172a] text-white border-b border-slate-800 sticky top-0 z-40 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -93,10 +106,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={() => {
                   setUserRole('staff');
-                  if (activeTab === 'materials' || activeTab === 'recipes') {
+                  if (activeTab === 'materials' || activeTab === 'recipes' || activeTab === 'formulas') {
                     setActiveTab('staff-portal');
                   }
                 }}
+                id="btn-role-staff"
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                   userRole === 'staff'
                     ? 'bg-blue-600 text-white shadow-xs'
@@ -109,18 +123,34 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
 
               <button
-                onClick={() => setUserRole('admin')}
+                onClick={handleAdminRoleClick}
+                id="btn-role-admin"
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                   userRole === 'admin'
-                    ? 'bg-slate-700 text-white shadow-xs'
+                    ? 'bg-amber-600 text-white shadow-xs'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
-                title="โหมดผู้จัดการ: จัดการสูตร BOM, ทะเบียนวัตถุดิบ/สินค้า และสรุป Variance"
+                title={isAdminAuthenticated ? "โหมดผู้ดูแลระบบ: จัดการสูตร BOM, ทะเบียนวัตถุดิบ/สินค้า และสรุป Variance" : "ต้องยืนยันตัวตน Admin เพื่อเข้าใช้งาน"}
               >
-                <Shield className="w-3.5 h-3.5 text-amber-400" />
+                <Shield className="w-3.5 h-3.5 text-amber-200" />
                 <span>หลังบ้าน (Admin)</span>
+                {!isAdminAuthenticated && (
+                  <Lock className="w-3 h-3 text-amber-400" />
+                )}
               </button>
             </div>
+
+            {/* If Admin is authenticated and in admin mode, offer quick lock */}
+            {userRole === 'admin' && isAdminAuthenticated && (
+              <button
+                onClick={onLockAdmin}
+                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                title="ล็อคสิทธิ์ Admin และกลับสู่โหมดพนักงาน"
+              >
+                <Lock className="w-3 h-3 text-amber-400" />
+                <span>ล็อค Admin</span>
+              </button>
+            )}
 
             {/* Quick Action in Header */}
             {userRole === 'staff' ? (
@@ -369,10 +399,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             </>
           ) : (
-            <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium px-3 py-1.5 rounded-lg bg-slate-800/40 border border-slate-800 whitespace-nowrap">
-              <Lock className="w-3 h-3 text-amber-500" />
-              <span>สูตร BOM & ทะเบียนสินค้า (ล็อคสำหรับ Admin)</span>
-            </div>
+            <button
+              onClick={onRequestAdminAuth}
+              className="flex items-center gap-1.5 text-[11px] text-amber-300 hover:text-amber-100 font-medium px-3 py-1.5 rounded-lg bg-amber-950/40 hover:bg-amber-900/50 border border-amber-800/60 whitespace-nowrap transition-colors"
+              title="กดเพื่อปลดล็อคเข้าสู่ระบบผู้ดูแลระบบ (Admin)"
+            >
+              <Lock className="w-3 h-3 text-amber-400" />
+              <span>สูตร BOM & ทะเบียนสินค้า (คลิกเพื่อปลดล็อค Admin)</span>
+            </button>
           )}
         </div>
       </div>

@@ -7,7 +7,7 @@ import {
   MonthlyStockCountRecord,
   PhysicalStockCountItem,
 } from '../types/stock';
-import { generateMonthlySummaryForPeriod } from '../utils/calculations';
+import { generateMonthlySummaryForPeriod, getAvailableMonths } from '../utils/calculations';
 import {
   X,
   ClipboardCheck,
@@ -24,6 +24,7 @@ import {
   Layers,
   Sparkles,
   Info,
+  RefreshCw,
 } from 'lucide-react';
 
 interface PhysicalStockCountModalProps {
@@ -39,20 +40,35 @@ interface PhysicalStockCountModalProps {
     applyAsOpeningStock: boolean
   ) => void;
   existingRecord?: MonthlyStockCountRecord | null;
+  onRestoreSampleData?: () => void;
 }
 
 export const PhysicalStockCountModal: React.FC<PhysicalStockCountModalProps> = ({
   isOpen,
   onClose,
-  materials,
-  recipes,
-  productions,
-  transactions,
-  selectedMonth = new Date().toISOString().substring(0, 7),
+  materials = [],
+  recipes = [],
+  productions = [],
+  transactions = [],
+  selectedMonth,
   onSaveStockCount,
   existingRecord,
+  onRestoreSampleData,
 }) => {
-  const [month, setMonth] = useState<string>(selectedMonth);
+  const availableMonths = useMemo(() => {
+    const list = getAvailableMonths(productions, transactions);
+    const currentMonth = new Date().toISOString().substring(0, 7);
+    if (!list.includes(currentMonth)) {
+      list.unshift(currentMonth);
+    }
+    return list;
+  }, [productions, transactions]);
+
+  const [month, setMonth] = useState<string>(() => {
+    if (selectedMonth && selectedMonth !== 'all') return selectedMonth;
+    return availableMonths[0] || new Date().toISOString().substring(0, 7);
+  });
+
   const [countDate, setCountDate] = useState<string>(
     () => new Date().toISOString().substring(0, 10)
   );
@@ -65,11 +81,11 @@ export const PhysicalStockCountModal: React.FC<PhysicalStockCountModalProps> = (
   // Calculate the current calculated system ending stocks for the chosen month
   const systemSummaries = useMemo(() => {
     return generateMonthlySummaryForPeriod(
-      materials,
-      recipes,
-      productions,
-      transactions,
-      month
+      materials || [],
+      recipes || [],
+      productions || [],
+      transactions || [],
+      month || 'all'
     );
   }, [materials, recipes, productions, transactions, month]);
 
@@ -81,7 +97,10 @@ export const PhysicalStockCountModal: React.FC<PhysicalStockCountModalProps> = (
   useEffect(() => {
     if (isOpen) {
       setIsSavedSuccess(false);
-      setMonth(selectedMonth === 'all' ? new Date().toISOString().substring(0, 7) : selectedMonth);
+      const targetMonth = selectedMonth && selectedMonth !== 'all' 
+        ? selectedMonth 
+        : (availableMonths[0] || new Date().toISOString().substring(0, 7));
+      setMonth(targetMonth);
       setCountDate(new Date().toISOString().substring(0, 10));
 
       if (existingRecord) {
@@ -89,23 +108,23 @@ export const PhysicalStockCountModal: React.FC<PhysicalStockCountModalProps> = (
         setNote(existingRecord.Note || '');
         const countMap: { [rmCode: string]: string } = {};
         const noteMap: { [rmCode: string]: string } = {};
-        existingRecord.Items.forEach((it) => {
+        (existingRecord.Items || []).forEach((it) => {
           countMap[it.RM_Code] = it.Counted_Qty.toString();
           if (it.Note) noteMap[it.RM_Code] = it.Note;
         });
         setCounts(countMap);
         setItemNotes(noteMap);
       } else {
-        // Pre-fill with system ending stock as a starting baseline
+        // Pre-fill with calculated system ending stock as a starting baseline
         const countMap: { [rmCode: string]: string } = {};
         systemSummaries.forEach((s) => {
-          countMap[s.RM_Code] = s.Ending_Stock.toString();
+          countMap[s.RM_Code] = (s.Ending_Stock ?? 0).toString();
         });
         setCounts(countMap);
         setItemNotes({});
       }
     }
-  }, [isOpen, existingRecord, selectedMonth, systemSummaries]);
+  }, [isOpen, existingRecord, selectedMonth, availableMonths]);
 
   if (!isOpen) return null;
 
@@ -243,16 +262,37 @@ export const PhysicalStockCountModal: React.FC<PhysicalStockCountModalProps> = (
         {/* Form Meta Controls */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 mb-4 text-xs">
           <div>
-            <label className="block text-slate-600 font-semibold mb-1 flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-slate-400" />
-              ประจำเดือน (Month)
+            <label className="block text-slate-600 font-semibold mb-1 flex items-center justify-between">
+              <span className="flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                ประจำเดือน (Month)
+              </span>
+              {availableMonths.length > 1 && (
+                <span className="text-[10px] text-indigo-600 font-normal">
+                  มี {availableMonths.length} เดือน
+                </span>
+              )}
             </label>
-            <input
-              type="month"
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-            />
+            <div className="flex items-center gap-1.5">
+              <select
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              >
+                {availableMonths.map((m) => (
+                  <option key={m} value={m}>
+                    เดือน {m} {m === new Date().toISOString().substring(0, 7) ? '(ปัจจุบัน)' : ''}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="month"
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+                className="w-auto px-2 py-1 rounded-lg border border-slate-200 bg-white font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-[11px]"
+                title="เลือกเดือนระบุเจาะจง"
+              />
+            </div>
           </div>
 
           <div>
@@ -363,7 +403,49 @@ export const PhysicalStockCountModal: React.FC<PhysicalStockCountModalProps> = (
               <span className="col-span-2 text-right">ผลต่าง (Variance)</span>
             </div>
 
-            {filteredSummaries.map((s) => {
+            {filteredSummaries.length === 0 ? (
+              <div className="py-12 px-4 text-center">
+                <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3 text-slate-400">
+                  <Info className="w-6 h-6" />
+                </div>
+                {materials.length === 0 ? (
+                  <div className="space-y-3">
+                    <p className="text-sm font-semibold text-slate-800">
+                      ยังไม่มีรายการวัตถุดิบในระบบ
+                    </p>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                      กรุณาเพิ่มรายการวัตถุดิบในแท็บ <b>ทะเบียนวัตถุดิบ (Master Materials)</b> หรือกดโหลดข้อมูลตัวอย่างเริ่มต้น
+                    </p>
+                    {onRestoreSampleData && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onRestoreSampleData();
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>โหลดข้อมูลตัวอย่างวัตถุดิบ (Restore Sample)</span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700">
+                      ไม่พบวัตถุดิบที่ตรงกับคำค้นหา "{searchTerm}"
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setSearchTerm('')}
+                      className="mt-2 text-xs text-indigo-600 font-semibold hover:underline"
+                    >
+                      ล้างคำค้นหา
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              filteredSummaries.map((s) => {
               const countedVal = counts[s.RM_Code] !== undefined ? counts[s.RM_Code] : s.Ending_Stock.toString();
               const numCounted = parseFloat(countedVal) || 0;
               const variance = Number((numCounted - s.Ending_Stock).toFixed(3));
@@ -450,7 +532,7 @@ export const PhysicalStockCountModal: React.FC<PhysicalStockCountModalProps> = (
                   </div>
                 </div>
               );
-            })}
+            }))}
           </div>
 
           {/* Roll-over explanation & Setting */}

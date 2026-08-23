@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
+import { Shield, Lock } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
   ActiveTab,
@@ -53,12 +54,22 @@ import { OpeningStockModal } from './components/OpeningStockModal';
 import { PhysicalStockCountModal } from './components/PhysicalStockCountModal';
 import { ClearDataModal } from './components/ClearDataModal';
 import { PopupBlockedModal } from './components/PopupBlockedModal';
+import { AdminAuthModal } from './components/AdminAuthModal';
 import { MonthlyStockCountRecord } from './types/stock';
 
 export default function App() {
   const [userRole, setUserRole] = useState<UserRole>('staff');
   const [activeTab, setActiveTab] = useState<ActiveTab>('staff-portal');
   const [activeFilter, setActiveFilter] = useState<'all' | 'lowStock' | 'overused'>('all');
+
+  // Admin Auth Gate State
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    return sessionStorage.getItem('stock_admin_auth') === 'true';
+  });
+  const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState(false);
+  const [adminPin, setAdminPin] = useState<string>(() => {
+    return localStorage.getItem('stock_admin_pin') || '8888';
+  });
 
   // Core Data State (Saved to localStorage or synced with Google Sheets)
   const [materials, setMaterials] = useState<MasterMaterial[]>(() => {
@@ -237,6 +248,10 @@ export default function App() {
       (currentUser, accessToken) => {
         setUser(currentUser);
         setToken(accessToken);
+        if (currentUser) {
+          setIsAdminAuthenticated(true);
+          sessionStorage.setItem('stock_admin_auth', 'true');
+        }
       },
       () => {
         setUser(null);
@@ -245,6 +260,28 @@ export default function App() {
     );
     return () => unsubscribe();
   }, []);
+
+  const handleAdminAuthSuccess = () => {
+    setIsAdminAuthenticated(true);
+    sessionStorage.setItem('stock_admin_auth', 'true');
+    setUserRole('admin');
+    setIsAdminAuthModalOpen(false);
+    showNotification('🔓 ปลดล็อคสิทธิ์ผู้ดูแลระบบ (Admin) สำเร็จ');
+  };
+
+  const handleLockAdmin = () => {
+    setIsAdminAuthenticated(false);
+    sessionStorage.removeItem('stock_admin_auth');
+    setUserRole('staff');
+    if (activeTab === 'materials' || activeTab === 'recipes' || activeTab === 'formulas') {
+      setActiveTab('staff-portal');
+    }
+    showNotification('🔒 ล็อคสิทธิ์ Admin และกลับสู่โหมดพนักงาน');
+  };
+
+  const handleRequestAdminAuth = () => {
+    setIsAdminAuthModalOpen(true);
+  };
 
   const showNotification = (msg: string) => {
     setNotification(msg);
@@ -260,7 +297,9 @@ export default function App() {
       if (res) {
         setUser(res.user);
         setToken(res.accessToken);
-        showNotification(`ยินดีต้อนรับคุณ ${res.user.displayName || res.user.email}`);
+        setIsAdminAuthenticated(true);
+        sessionStorage.setItem('stock_admin_auth', 'true');
+        showNotification(`ยินดีต้อนรับคุณ ${res.user.displayName || res.user.email} (สิทธิ์ Admin)`);
       }
     } catch (err: any) {
       if (
@@ -280,6 +319,12 @@ export default function App() {
     await logout();
     setUser(null);
     setToken(null);
+    setIsAdminAuthenticated(false);
+    sessionStorage.removeItem('stock_admin_auth');
+    setUserRole('staff');
+    if (activeTab === 'materials' || activeTab === 'recipes' || activeTab === 'formulas') {
+      setActiveTab('staff-portal');
+    }
     showNotification('ออกจากระบบเรียบร้อย');
   };
 
@@ -567,11 +612,20 @@ export default function App() {
         setActiveTab={setActiveTab}
         userRole={userRole}
         setUserRole={setUserRole}
+        isAdminAuthenticated={isAdminAuthenticated}
+        onRequestAdminAuth={handleRequestAdminAuth}
+        onLockAdmin={handleLockAdmin}
         user={user}
         spreadsheetId={spreadsheetId}
         spreadsheetUrl={spreadsheetUrl}
         isSyncing={isSyncing}
-        onOpenSyncModal={() => setIsSyncModalOpen(true)}
+        onOpenSyncModal={() => {
+          if (!isAdminAuthenticated) {
+            handleRequestAdminAuth();
+          } else {
+            setIsSyncModalOpen(true);
+          }
+        }}
         onOpenFormulaModal={() => setIsFormulaModalOpen(true)}
         onOpenNewTxModal={(type = 'Receive') => {
           setInitialTxType(type);
@@ -579,7 +633,13 @@ export default function App() {
         }}
         onOpenNewProdModal={() => setIsNewProdModalOpen(true)}
         onOpenOpeningStockModal={() => setIsOpeningStockModalOpen(true)}
-        onOpenClearDataModal={() => setIsClearDataModalOpen(true)}
+        onOpenClearDataModal={() => {
+          if (!isAdminAuthenticated) {
+            handleRequestAdminAuth();
+          } else {
+            setIsClearDataModalOpen(true);
+          }
+        }}
         onSyncNow={handlePushAllToSheet}
         onSignIn={handleSignIn}
         onSignOut={handleSignOut}
@@ -688,22 +748,64 @@ export default function App() {
         )}
 
         {activeTab === 'materials' && (
-          <MasterMaterialsTab
-            materials={materials}
-            summaries={summaries}
-            onAddMaterial={handleAddMaterial}
-            onUpdateMaterial={handleUpdateMaterial}
-            onDeleteMaterial={handleDeleteMaterial}
-          />
+          userRole === 'admin' ? (
+            <MasterMaterialsTab
+              materials={materials}
+              summaries={summaries}
+              onAddMaterial={handleAddMaterial}
+              onUpdateMaterial={handleUpdateMaterial}
+              onDeleteMaterial={handleDeleteMaterial}
+            />
+          ) : (
+            <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm text-center max-w-md mx-auto my-12">
+              <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto mb-4">
+                <Shield className="w-7 h-7" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800 mb-1">
+                ทะเบียนวัตถุดิบ (Master Materials)
+              </h3>
+              <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+                หน้านี้สงวนสิทธิ์เฉพาะผู้ดูแลระบบ (Admin) เพื่อป้องกันการแก้ไขรหัสวัตถุดิบ ราคาต่อหน่วย หรือสต็อกขั้นต่ำโดยไม่ได้รับอนุญาต
+              </p>
+              <button
+                onClick={handleRequestAdminAuth}
+                className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md transition-colors flex items-center justify-center gap-2"
+              >
+                <Lock className="w-4 h-4" />
+                <span>ยืนยันสิทธิ์ Admin เพื่อเข้าใช้งาน</span>
+              </button>
+            </div>
+          )
         )}
 
         {activeTab === 'recipes' && (
-          <BOMRecipeTab
-            recipes={recipes}
-            materials={materials}
-            onAddRecipe={handleAddRecipe}
-            onDeleteRecipeItem={handleDeleteRecipeItem}
-          />
+          userRole === 'admin' ? (
+            <BOMRecipeTab
+              recipes={recipes}
+              materials={materials}
+              onAddRecipe={handleAddRecipe}
+              onDeleteRecipeItem={handleDeleteRecipeItem}
+            />
+          ) : (
+            <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm text-center max-w-md mx-auto my-12">
+              <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto mb-4">
+                <Shield className="w-7 h-7" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800 mb-1">
+                สูตรมาตรฐานต่อชิ้น (BOM Recipes)
+              </h3>
+              <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+                หน้านี้สงวนสิทธิ์เฉพาะผู้ดูแลระบบ (Admin) ในการจัดการสูตรคำนวณและอัตราการใช้วัตถุดิบต่อหน่วยผลิต
+              </p>
+              <button
+                onClick={handleRequestAdminAuth}
+                className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md transition-colors flex items-center justify-center gap-2"
+              >
+                <Lock className="w-4 h-4" />
+                <span>ยืนยันสิทธิ์ Admin เพื่อเข้าใช้งาน</span>
+              </button>
+            </div>
+          )
         )}
 
         {activeTab === 'formulas' && (
@@ -730,6 +832,15 @@ export default function App() {
       </footer>
 
       {/* Modals */}
+      <AdminAuthModal
+        isOpen={isAdminAuthModalOpen}
+        onClose={() => setIsAdminAuthModalOpen(false)}
+        onSuccess={handleAdminAuthSuccess}
+        onGoogleSignIn={handleSignIn}
+        user={user}
+        adminPin={adminPin}
+      />
+
       <ClearDataModal
         isOpen={isClearDataModalOpen}
         onClose={() => setIsClearDataModalOpen(false)}
@@ -801,6 +912,7 @@ export default function App() {
         productions={productions}
         transactions={transactions}
         onSaveStockCount={handleSaveStockCount}
+        onRestoreSampleData={handleRestoreSampleData}
       />
 
       <MaterialDetailModal
