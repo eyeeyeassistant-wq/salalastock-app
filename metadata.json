@@ -1,0 +1,6 @@
+{
+  "name": "Stock & Variance Tracking System",
+  "description": "ระบบจัดการสต๊อกสินค้าและเปรียบเทียบการใช้วัตถุดิบ พร้อมระบบตัดสต็อกอัตโนมัติ แจ้งเตือนสินค้าใกล้หมด และเชื่อมต่อ Google Sheets",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
