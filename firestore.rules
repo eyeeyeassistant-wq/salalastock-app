@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Bakery stock, transactions, recipes, materials, and global settings
+    match /bakery_store/{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

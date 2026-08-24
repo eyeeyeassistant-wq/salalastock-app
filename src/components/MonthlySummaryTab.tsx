@@ -188,21 +188,24 @@ export const MonthlySummaryTab: React.FC<MonthlySummaryTabProps> = ({
 
       {/* Main Table: Tab "Monthly_Stock_Summary" */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50">
           <div className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-blue-600" />
-            <h2 className="text-sm font-bold text-slate-800">
-              Tab 5: Monthly_Stock_Summary (สรุปสต๊อกสิ้นเดือนและผลต่างวัตถุดิบ)
+            <Layers className="w-4 h-4 text-blue-600 shrink-0" />
+            <h2 className="text-sm sm:text-base font-bold text-slate-800">
+              สรุปสต๊อกสิ้นเดือนและผลต่างวัตถุดิบ (Monthly Summary & Variance)
             </h2>
           </div>
-          <span className="text-xs font-medium text-slate-500">
-            แสดงผลลัพธ์คำนวณตามสูตรอัตโนมัติ 10 คอลัมน์
-          </span>
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+            <span className="sm:hidden text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+              👉 ปัดซ้าย-ขวาเพื่อดูผลต่าง Variance
+            </span>
+            <span className="hidden sm:inline">คำนวณตามสูตรอัตโนมัติ 10 คอลัมน์</span>
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs sm:text-sm border-collapse">
-            <thead className="bg-slate-50 text-slate-500 font-semibold uppercase text-[10px] sm:text-xs tracking-wider border-b border-slate-200">
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left text-xs sm:text-sm border-collapse min-w-[800px]">
+            <thead className="bg-slate-50 text-slate-600 font-semibold uppercase text-[11px] sm:text-xs tracking-wider border-b border-slate-200">
               <tr>
                 <th
                   onClick={() => handleSort('RM_Code')}
@@ -289,48 +292,48 @@ export const MonthlySummaryTab: React.FC<MonthlySummaryTabProps> = ({
                     }`}
                   >
                     {/* RM_Code */}
-                    <td className="px-4 py-3 font-mono font-bold text-slate-900">
+                    <td className="px-4 py-3.5 font-mono font-bold text-slate-900 text-xs sm:text-sm">
                       {item.RM_Code}
                     </td>
 
                     {/* RM_Name */}
-                    <td className="px-4 py-3 font-medium text-slate-900">
-                      <div>{item.RM_Name}</div>
+                    <td className="px-4 py-3.5 font-medium text-slate-900 text-xs sm:text-sm">
+                      <div className="font-semibold text-slate-900">{item.RM_Name}</div>
                       <div className="text-[11px] text-slate-400 font-normal">
-                        Safety: {safetyStock} {item.Unit}
+                        จุดสั่งซื้อ Safety: {safetyStock} {item.Unit}
                       </div>
                     </td>
 
                     {/* Unit */}
-                    <td className="px-3 py-3 text-center text-slate-500 font-mono text-xs">
+                    <td className="px-3 py-3.5 text-center text-slate-600 font-mono text-xs sm:text-sm">
                       {item.Unit}
                     </td>
 
                     {/* Opening_Stock */}
-                    <td className="px-3.5 py-3 text-right font-mono text-slate-600">
+                    <td className="px-3.5 py-3.5 text-right font-mono text-slate-700 text-xs sm:text-sm">
                       {item.Opening_Stock.toLocaleString()}
                     </td>
 
                     {/* Total_Receive */}
-                    <td className="px-3.5 py-3 text-right font-mono font-medium text-slate-900">
+                    <td className="px-3.5 py-3.5 text-right font-mono font-bold text-emerald-700 text-xs sm:text-sm">
                       +{item.Total_Receive.toLocaleString()}
                     </td>
 
                     {/* Actual_Usage */}
-                    <td className="px-3.5 py-3 text-right font-mono font-medium text-slate-900">
+                    <td className="px-3.5 py-3.5 text-right font-mono font-medium text-slate-900 text-xs sm:text-sm">
                       {item.Actual_Usage.toLocaleString()}
                     </td>
 
                     {/* Expected_Usage */}
-                    <td className="px-3.5 py-3 text-right font-mono text-slate-600">
+                    <td className="px-3.5 py-3.5 text-right font-mono text-slate-600 text-xs sm:text-sm">
                       {item.Expected_Usage.toLocaleString()}
                     </td>
 
                     {/* Ending_Stock (Highlighted if Low Stock) */}
                     <td
-                      className={`px-3.5 py-3 text-right font-mono font-bold ${
+                      className={`px-3.5 py-3.5 text-right font-mono font-bold text-xs sm:text-sm ${
                         item.isLowStock
-                          ? 'text-red-600'
+                          ? 'text-red-600 bg-red-50/50'
                           : 'text-slate-900'
                       }`}
                     >
@@ -338,14 +341,14 @@ export const MonthlySummaryTab: React.FC<MonthlySummaryTabProps> = ({
                     </td>
 
                     {/* Variance (Highlighted if Overused > 0 in red pill, <= 0 in green pill) */}
-                    <td className="px-3.5 py-3 text-right font-mono font-medium">
+                    <td className="px-3.5 py-3.5 text-right font-mono font-medium">
                       {isOverused ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-bold">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-100 text-red-700 rounded-md text-[11px] font-bold">
                           <TrendingUp className="w-3 h-3" />
-                          +{item.Variance.toLocaleString()} (Waste)
+                          +{item.Variance.toLocaleString()} (สูญเสีย)
                         </span>
                       ) : isUnderused ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-bold">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-green-100 text-green-700 rounded-md text-[11px] font-bold">
                           <TrendingDown className="w-3 h-3" />
                           {item.Variance.toLocaleString()}
                         </span>
@@ -355,28 +358,29 @@ export const MonthlySummaryTab: React.FC<MonthlySummaryTabProps> = ({
                     </td>
 
                     {/* Stock_Status */}
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-4 py-3.5 text-center">
                       {item.isLowStock ? (
-                        <span className="inline-flex items-center gap-1 text-red-600 font-bold text-xs">
-                          <AlertTriangle className="w-3.5 h-3.5" />
-                          ⚠️ วัตถุดิบใกล้หมด
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                          ใกล้หมด
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-green-600 font-medium text-xs">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                           ปกติ
                         </span>
                       )}
                     </td>
 
                     {/* Action Detail */}
-                    <td className="px-3 py-3 text-center">
+                    <td className="px-3 py-3.5 text-center">
                       <button
                         onClick={() => onSelectMaterialDetail(item.RM_Code)}
-                        className="text-xs text-blue-600 hover:text-blue-800 font-semibold hover:underline p-1"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors min-h-[32px]"
                         title="ดูที่มาการคำนวณและประวัติ"
                       >
-                        วิเคราะห์
+                        <Info className="w-3.5 h-3.5" />
+                        <span>วิเคราะห์</span>
                       </button>
                     </td>
                   </tr>

@@ -1,0 +1,37 @@
+{
+  "entities": {
+    "app_settings": {
+      "title": "AppSettings",
+      "description": "Global application configuration including Google Sheets connection and system preferences",
+      "type": "object",
+      "properties": {
+        "webhookUrl": { "type": "string" },
+        "spreadsheetId": { "type": "string" },
+        "spreadsheetUrl": { "type": "string" },
+        "autoSyncEnabled": { "type": "boolean" },
+        "lastSyncTime": { "type": "string" },
+        "adminPin": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "app_data": {
+      "title": "AppData",
+      "description": "Bakery inventory dataset containing materials, recipes, productions, transactions, and stock counts",
+      "type": "object",
+      "properties": {
+        "materials": { "type": "array" },
+        "recipes": { "type": "array" },
+        "productions": { "type": "array" },
+        "transactions": { "type": "array" },
+        "stockCountRecords": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/bakery_store/{docId}": {
+      "schema": "app_data",
+      "description": "Stores main bakery inventory documents and settings"
+    }
+  }
+}

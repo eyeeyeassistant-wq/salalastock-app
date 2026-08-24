@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   Package,
   FileSpreadsheet,
@@ -17,6 +17,10 @@ import {
   Lock,
   Trash2,
   BarChart3,
+  Cloud,
+  ChevronLeft,
+  ChevronRight,
+  Menu,
 } from 'lucide-react';
 import { ActiveTab, UserRole } from '../types/stock';
 import { User } from 'firebase/auth';
@@ -74,6 +78,70 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSignOut,
   lowStockCount,
 }) => {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+
+  // Check scroll boundary
+  const updateScrollState = () => {
+    if (scrollContainerRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = scrollContainerRef.current;
+      setCanScrollLeft(scrollLeft > 10);
+      setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 10);
+    }
+  };
+
+  useEffect(() => {
+    updateScrollState();
+    window.addEventListener('resize', updateScrollState);
+    return () => window.removeEventListener('resize', updateScrollState);
+  }, [userRole, activeTab]);
+
+  const handleScroll = (direction: 'left' | 'right') => {
+    if (scrollContainerRef.current) {
+      const scrollAmount = direction === 'left' ? -260 : 260;
+      scrollContainerRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+      setTimeout(updateScrollState, 300);
+    }
+  };
+
+  // Mouse wheel horizontal scroll support
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (scrollContainerRef.current) {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        return; // Natural horizontal trackpad
+      }
+      scrollContainerRef.current.scrollLeft += e.deltaY;
+      updateScrollState();
+    }
+  };
+
+  // Mouse drag-to-scroll support for desktop
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!scrollContainerRef.current) return;
+    setIsDragging(true);
+    setStartX(e.pageX - scrollContainerRef.current.offsetLeft);
+    setScrollLeft(scrollContainerRef.current.scrollLeft);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isDragging || !scrollContainerRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - scrollContainerRef.current.offsetLeft;
+    const walk = (x - startX) * 1.5;
+    scrollContainerRef.current.scrollLeft = scrollLeft - walk;
+    updateScrollState();
+  };
+
+  const handleMouseUpOrLeave = () => {
+    setIsDragging(false);
+    updateScrollState();
+  };
+
   const handleAdminRoleClick = () => {
     if (isAdminAuthenticated) {
       setUserRole('admin');
@@ -81,34 +149,116 @@ export const Navbar: React.FC<NavbarProps> = ({
       onRequestAdminAuth();
     }
   };
+
+  const tabItems = [
+    {
+      id: 'staff-portal' as ActiveTab,
+      name: 'พอร์ทัลพนักงาน',
+      sub: 'บันทึกประจำวัน',
+      icon: UserCheck,
+      color: 'text-emerald-400',
+      badge: null,
+      adminOnly: false,
+    },
+    {
+      id: 'dashboard' as ActiveTab,
+      name: 'แดชบอร์ดสรุปรายเดือน',
+      sub: 'Monthly Dashboard',
+      icon: BarChart3,
+      color: 'text-blue-400',
+      badge: null,
+      adminOnly: false,
+    },
+    {
+      id: 'production' as ActiveTab,
+      name: '1. บันทึกผลิต & ส่งสาขา',
+      sub: 'Daily Production',
+      icon: CalendarCheck,
+      color: 'text-sky-400',
+      badge: null,
+      adminOnly: false,
+    },
+    {
+      id: 'transactions' as ActiveTab,
+      name: '2. เบิก/รับสต็อก',
+      sub: 'Stock Transactions',
+      icon: ArrowLeftRight,
+      color: 'text-cyan-400',
+      badge: null,
+      adminOnly: false,
+    },
+    {
+      id: 'summary' as ActiveTab,
+      name: '3. สรุปสต็อก & ผลต่าง',
+      sub: 'Variance Analysis',
+      icon: Layers,
+      color: 'text-indigo-400',
+      badge: lowStockCount > 0 ? `${lowStockCount} เตือน` : null,
+      badgeColor: 'bg-rose-500 text-white',
+      adminOnly: false,
+    },
+    ...(userRole === 'admin'
+      ? [
+          {
+            id: 'materials' as ActiveTab,
+            name: '4. ทะเบียนวัตถุดิบ',
+            sub: 'Master Materials',
+            icon: Package,
+            color: 'text-amber-400',
+            badge: null,
+            adminOnly: true,
+          },
+          {
+            id: 'recipes' as ActiveTab,
+            name: '5. สูตรมาตรฐานต่อชิ้น',
+            sub: 'BOM Recipe',
+            icon: Sparkles,
+            color: 'text-amber-400',
+            badge: null,
+            adminOnly: true,
+          },
+          {
+            id: 'formulas' as ActiveTab,
+            name: 'สูตร Google Sheets',
+            sub: 'Formula Guide',
+            icon: BookOpen,
+            color: 'text-purple-400',
+            badge: null,
+            adminOnly: true,
+          },
+        ]
+      : []),
+  ];
+
   return (
-    <header className="bg-[#0f172a] text-white border-b border-slate-800 sticky top-0 z-40 shadow-sm">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <header className="bg-[#0f172a] text-white border-b border-slate-800 sticky top-0 z-40 shadow-md">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         {/* Top Header Row */}
-        <div className="flex items-center justify-between h-16">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md">
+        <div className="flex items-center justify-between h-16 gap-2">
+          {/* Logo & App Title */}
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shrink-0">
               <Package className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base sm:text-lg font-bold text-slate-100 tracking-tight">
-                  ระบบจัดการสต๊อก & คำนวณผลต่างวัตถุดิบ
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <h1 className="text-sm sm:text-base md:text-lg font-bold text-slate-100 tracking-tight truncate">
+                  ระบบจัดการสต๊อก & Variance
                 </h1>
-                <span className="text-[11px] bg-blue-500/20 text-blue-300 font-semibold px-2.5 py-0.5 rounded-full border border-blue-500/30 uppercase tracking-wider hidden sm:inline">
+                <span className="text-[10px] sm:text-[11px] bg-blue-500/20 text-blue-300 font-semibold px-2 py-0.5 rounded-full border border-blue-500/30 uppercase tracking-wider hidden md:inline shrink-0">
                   Stock & Variance
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
-                แยกสิทธิ์ หน้าบ้าน (พนักงานกรอกยอด) vs หลังบ้าน (เจ้าของจัดการสูตร & วัตถุดิบ)
+              <p className="text-[11px] sm:text-xs text-slate-400 truncate hidden xs:block">
+                ตัดสต็อกอัตโนมัติ • คำนวณ Waste • ซิงค์ Google Sheets
               </p>
             </div>
           </div>
 
-          {/* Action Buttons & Auth */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          {/* Action Buttons & Role Switcher */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             {/* Role Switcher Toggle */}
-            <div className="flex items-center bg-slate-800/90 p-1 rounded-xl border border-slate-700">
+            <div className="flex items-center bg-slate-800/95 p-1 rounded-xl border border-slate-700">
               <button
                 onClick={() => {
                   setUserRole('staff');
@@ -117,21 +267,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                   }
                 }}
                 id="btn-role-staff"
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all min-h-[36px] ${
                   userRole === 'staff'
                     ? 'bg-blue-600 text-white shadow-xs'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
                 title="โหมดพนักงาน: สำหรับกรอกยอดผลิต จัดส่ง ของเหลือ และเบิกรับวัตถุดิบ"
               >
-                <UserCheck className="w-3.5 h-3.5" />
-                <span>หน้าบ้าน (พนักงาน)</span>
+                <UserCheck className="w-3.5 h-3.5 text-blue-300" />
+                <span>พนักงาน</span>
               </button>
 
               <button
                 onClick={handleAdminRoleClick}
                 id="btn-role-admin"
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all min-h-[36px] ${
                   userRole === 'admin'
                     ? 'bg-amber-600 text-white shadow-xs'
                     : 'text-slate-400 hover:text-slate-200'
@@ -139,7 +289,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 title={isAdminAuthenticated ? "โหมดผู้ดูแลระบบ: จัดการสูตร BOM, ทะเบียนวัตถุดิบ/สินค้า และสรุป Variance" : "ต้องยืนยันตัวตน Admin เพื่อเข้าใช้งาน"}
               >
                 <Shield className="w-3.5 h-3.5 text-amber-200" />
-                <span>หลังบ้าน (Admin)</span>
+                <span>Admin</span>
                 {!isAdminAuthenticated && (
                   <Lock className="w-3 h-3 text-amber-400" />
                 )}
@@ -150,62 +300,49 @@ export const Navbar: React.FC<NavbarProps> = ({
             {userRole === 'admin' && isAdminAuthenticated && (
               <button
                 onClick={onLockAdmin}
-                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                className="hidden lg:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors min-h-[36px]"
                 title="ล็อคสิทธิ์ Admin และกลับสู่โหมดพนักงาน"
               >
-                <Lock className="w-3 h-3 text-amber-400" />
-                <span>ล็อค Admin</span>
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                <span>ล็อค</span>
               </button>
             )}
 
-            {/* Quick Action in Header */}
-            {userRole === 'staff' ? (
+            {/* Quick Action in Header for Admin */}
+            {userRole === 'admin' && (
               <button
-                onClick={onOpenOpeningStockModal}
-                className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white shadow-xs transition-colors"
-                title="กรอกยอดยกมาต้นเดือน"
+                onClick={onOpenClearDataModal}
+                id="btn-clear-sample-data"
+                className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800/70 transition-colors min-h-[36px]"
+                title="เคลียร์ข้อมูลตัวอย่างเพื่อกรอกข้อมูลจริง"
               >
-                <Layers className="w-3.5 h-3.5" />
-                <span>กรอกยอดยกมา</span>
+                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                <span>เคลียร์ข้อมูล</span>
               </button>
-            ) : (
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={onOpenFormulaModal}
-                  id="btn-open-formula-guide"
-                  className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
-                  title="ดูสูตร Google Sheets และวิธีตั้งค่า"
-                >
-                  <BookOpen className="w-4 h-4 text-blue-400" />
-                  <span>คู่มือสูตร Sheets</span>
-                </button>
-
-                <button
-                  onClick={onOpenClearDataModal}
-                  id="btn-clear-sample-data"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800/70 transition-colors"
-                  title="เคลียร์ข้อมูลตัวอย่างเพื่อกรอกข้อมูลจริง"
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-                  <span>เคลียร์ข้อมูลตัวอย่าง</span>
-                </button>
-              </div>
             )}
+
+            {/* Cloud Persistence Badge */}
+            <div
+              className="hidden lg:inline-flex items-center gap-1.5 bg-sky-950/70 border border-sky-600/40 rounded-lg px-2.5 py-1.5 text-xs text-sky-200"
+              title="ข้อมูลและประวัติทั้งหมดได้รับการบันทึกบน Cloud Firestore แบบถาวร เปิดจากเครื่องไหนหรือผ่านไปกี่วันข้อมูลก็ไม่หาย"
+            >
+              <Cloud className="w-3.5 h-3.5 text-sky-400" />
+              <span className="font-medium text-[11px]">Cloud Database</span>
+            </div>
 
             {/* Google Sheets Connection Badge / Button */}
             {webhookUrl || spreadsheetId ? (
-              <div className="flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-500/50 rounded-lg px-2.5 py-1.5 text-xs text-emerald-200">
-                <span className={`w-2 h-2 rounded-full ${autoSyncEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="hidden md:inline font-semibold">
-                  {autoSyncEnabled ? 'ซิงค์ Sheets อัตโนมัติ' : 'เชื่อมต่อ Sheets แล้ว'}
-                  {lastSyncTime && <span className="text-[10px] text-emerald-300/80 font-normal ml-1">({lastSyncTime})</span>}
+              <div className="flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-500/50 rounded-lg px-2 sm:px-2.5 py-1.5 text-xs text-emerald-200 min-h-[36px]">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${autoSyncEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span className="hidden sm:inline font-semibold text-xs">
+                  {autoSyncEnabled ? 'ซิงค์ Sheets' : 'ต่อ Sheets แล้ว'}
                 </span>
                 <button
                   onClick={onSyncNow}
                   disabled={isSyncing}
                   title="กดเพื่อส่งข้อมูลบนเว็บขึ้นอัปเดตใน Google Sheet ทันที"
-                  className="hover:text-emerald-100 p-0.5 transition-transform"
+                  className="hover:text-emerald-100 p-1 transition-transform touch-manipulation"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-emerald-400' : ''}`} />
                 </button>
@@ -215,7 +352,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     target="_blank"
                     rel="noreferrer"
                     title="เปิดดูใน Google Sheets"
-                    className="hover:text-white p-0.5 text-emerald-400 hover:text-emerald-200"
+                    className="hover:text-white p-1 text-emerald-400 hover:text-emerald-200"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
@@ -224,7 +361,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <button
                     onClick={onOpenSyncModal}
                     title="ตั้งค่าการเชื่อมต่อ Google Sheets"
-                    className="text-[10px] text-emerald-300 hover:underline ml-1"
+                    className="text-[11px] text-emerald-300 hover:underline ml-0.5"
                   >
                     ตั้งค่า
                   </button>
@@ -234,17 +371,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={onOpenSyncModal}
                 id="btn-connect-sheets"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-900/30 transition-all hover:scale-105"
+                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-900/30 transition-all min-h-[36px]"
                 title="กดเพื่อเชื่อมต่อและตั้งค่า Google Sheet สำหรับเก็บข้อมูลอัตโนมัติ"
               >
-                <FileSpreadsheet className="w-4 h-4" />
-                <span className="font-semibold">เชื่อมต่อ Sheets (Auto-Sync)</span>
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span className="font-semibold text-xs">เชื่อมต่อ Sheets</span>
               </button>
             )}
 
             {/* User Account / Google Sign In */}
             {user ? (
-              <div className="flex items-center gap-2 pl-2 border-l border-slate-700">
+              <div className="flex items-center gap-1.5 pl-1 sm:pl-2 border-l border-slate-700">
                 {user.photoURL ? (
                   <img
                     src={user.photoURL}
@@ -269,7 +406,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={onSignIn}
                 id="btn-google-sign-in"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-800 hover:bg-slate-100 shadow-sm transition-colors"
+                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-800 hover:bg-slate-100 shadow-xs transition-colors min-h-[36px]"
               >
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
                   <path
@@ -295,137 +432,88 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Tab Navigation Bar - Role Adapted */}
-        <div className="flex items-center space-x-1 sm:space-x-2 overflow-x-auto py-2 border-t border-slate-800 scrollbar-none text-xs sm:text-sm">
-          {/* Monthly Dashboard Tab */}
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            id="tab-monthly-dashboard"
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-medium whitespace-nowrap transition-all ${
-              activeTab === 'dashboard'
-                ? 'bg-blue-600 text-white shadow-xs font-semibold'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4 text-blue-400" />
-            <span>📊 แดชบอร์ดสรุปรายเดือน (Monthly Dashboard)</span>
-          </button>
-
-          {/* Staff Tab / Portal */}
-          <button
-            onClick={() => setActiveTab('staff-portal')}
-            id="tab-staff-portal"
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-medium whitespace-nowrap transition-all ${
-              activeTab === 'staff-portal'
-                ? 'bg-blue-600 text-white shadow-xs font-semibold'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-            }`}
-          >
-            <UserCheck className="w-4 h-4 text-emerald-400" />
-            <span>📱 พอร์ทัลพนักงาน (Staff Operations)</span>
-          </button>
-
-          {/* Daily Production */}
-          <button
-            onClick={() => setActiveTab('production')}
-            id="tab-daily-production"
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-medium whitespace-nowrap transition-all ${
-              activeTab === 'production'
-                ? 'bg-blue-600 text-white shadow-xs font-semibold'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-            }`}
-          >
-            <CalendarCheck className="w-4 h-4" />
-            <span>1. บันทึกผลิต & ส่งสาขา & ของเหลือ (Daily Production)</span>
-          </button>
-
-          {/* Transactions */}
-          <button
-            onClick={() => setActiveTab('transactions')}
-            id="tab-stock-transactions"
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-medium whitespace-nowrap transition-all ${
-              activeTab === 'transactions'
-                ? 'bg-blue-600 text-white shadow-xs font-semibold'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-            }`}
-          >
-            <ArrowLeftRight className="w-4 h-4" />
-            <span>2. บันทึกเบิก/รับวัตถุดิบ (Stock Transactions)</span>
-          </button>
-
-          {/* Summary Tab (Variance Analysis) */}
-          <button
-            onClick={() => setActiveTab('summary')}
-            id="tab-monthly-summary"
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-medium whitespace-nowrap transition-all ${
-              activeTab === 'summary'
-                ? 'bg-blue-600 text-white shadow-xs font-semibold'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-            }`}
-          >
-            <Layers className="w-4 h-4" />
-            <span>3. สรุปสต๊อก & ผลต่าง (Monthly Summary)</span>
-            {lowStockCount > 0 && (
-              <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full ml-1">
-                {lowStockCount}
-              </span>
-            )}
-          </button>
-
-          {/* Backend / Admin Only Tabs */}
-          {userRole === 'admin' ? (
-            <>
-              <button
-                onClick={() => setActiveTab('materials')}
-                id="tab-master-materials"
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-medium whitespace-nowrap transition-all ${
-                  activeTab === 'materials'
-                    ? 'bg-blue-600 text-white shadow-xs font-semibold'
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-                }`}
-              >
-                <Package className="w-4 h-4" />
-                <span>4. ทะเบียนวัตถุดิบ (Master Materials)</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('recipes')}
-                id="tab-bom-recipes"
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-medium whitespace-nowrap transition-all ${
-                  activeTab === 'recipes'
-                    ? 'bg-blue-600 text-white shadow-xs font-semibold'
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-                }`}
-              >
-                <Sparkles className="w-4 h-4" />
-                <span>5. สูตรมาตรฐานต่อชิ้น (BOM Recipe)</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('formulas')}
-                id="tab-formula-guide"
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-medium whitespace-nowrap transition-all ${
-                  activeTab === 'formulas'
-                    ? 'bg-slate-700 text-white shadow-xs font-semibold'
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-                }`}
-              >
-                <BookOpen className="w-4 h-4 text-blue-400" />
-                <span>สูตร Google Sheets</span>
-              </button>
-            </>
-          ) : (
+        {/* Tab Navigation Bar with Desktop Scroll Chevrons & Wheel Drag */}
+        <div className="relative border-t border-slate-800/90 py-1.5">
+          {/* Left Scroll Button (Desktop & Tablet) */}
+          {canScrollLeft && (
             <button
-              onClick={onRequestAdminAuth}
-              className="flex items-center gap-1.5 text-[11px] text-amber-300 hover:text-amber-100 font-medium px-3 py-1.5 rounded-lg bg-amber-950/40 hover:bg-amber-900/50 border border-amber-800/60 whitespace-nowrap transition-colors"
-              title="กดเพื่อปลดล็อคเข้าสู่ระบบผู้ดูแลระบบ (Admin)"
+              onClick={() => handleScroll('left')}
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-slate-900/90 text-slate-200 border border-slate-700 shadow-lg flex items-center justify-center hover:bg-blue-600 hover:text-white transition-all backdrop-blur-xs"
+              title="เลื่อนซ้าย"
             >
-              <Lock className="w-3 h-3 text-amber-400" />
-              <span>สูตร BOM & ทะเบียนสินค้า (คลิกเพื่อปลดล็อค Admin)</span>
+              <ChevronLeft className="w-4 h-4" />
             </button>
           )}
+
+          {/* Right Scroll Button (Desktop & Tablet) */}
+          {canScrollRight && (
+            <button
+              onClick={() => handleScroll('right')}
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-slate-900/90 text-slate-200 border border-slate-700 shadow-lg flex items-center justify-center hover:bg-blue-600 hover:text-white transition-all backdrop-blur-xs"
+              title="เลื่อนขวา"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
+
+          {/* Scrollable Tabs Track */}
+          <div
+            ref={scrollContainerRef}
+            onScroll={updateScrollState}
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUpOrLeave}
+            onMouseLeave={handleMouseUpOrLeave}
+            className={`flex items-center space-x-1.5 sm:space-x-2 overflow-x-auto dark-scrollbar py-1 px-1 text-xs sm:text-sm select-none ${
+              isDragging ? 'cursor-grabbing' : 'cursor-grab'
+            }`}
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
+            {tabItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  id={`tab-${item.id}`}
+                  className={`flex items-center gap-2 px-3.5 sm:px-4 py-2.5 rounded-xl font-medium whitespace-nowrap transition-all touch-manipulation min-h-[42px] shrink-0 ${
+                    isActive
+                      ? 'bg-blue-600 text-white shadow-md font-semibold ring-1 ring-blue-400/40'
+                      : 'text-slate-300 hover:bg-slate-800/90 hover:text-white bg-slate-900/60 border border-slate-800'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : item.color}`} />
+                  <span className="text-xs sm:text-sm font-medium">{item.name}</span>
+                  {item.badge && (
+                    <span
+                      className={`text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                        item.badgeColor || 'bg-blue-500 text-white'
+                      }`}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+
+            {/* Lock button when staff mode */}
+            {userRole === 'staff' && (
+              <button
+                onClick={onRequestAdminAuth}
+                className="flex items-center gap-1.5 text-xs text-amber-300 hover:text-amber-100 font-medium px-3.5 py-2.5 rounded-xl bg-amber-950/40 hover:bg-amber-900/60 border border-amber-800/60 whitespace-nowrap transition-colors min-h-[42px] shrink-0"
+                title="กดเพื่อปลดล็อคเข้าสู่ระบบผู้ดูแลระบบ (Admin)"
+              >
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                <span>สูตร BOM & วัตถุดิบ (ปลดล็อค Admin)</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </header>
   );
 };
+

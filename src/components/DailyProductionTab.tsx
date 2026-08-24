@@ -114,94 +114,97 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50">
           <div className="flex items-center gap-2">
-            <CalendarCheck className="w-4 h-4 text-blue-600" />
-            <h2 className="text-sm font-bold text-slate-800">
-              Tab 3: Daily_Production (บันทึกการผลิต จัดส่ง และของเหลือรายสาขา)
+            <CalendarCheck className="w-4 h-4 text-blue-600 shrink-0" />
+            <h2 className="text-sm sm:text-base font-bold text-slate-800">
+              บันทึกการผลิต จัดส่ง และของเหลือรายสาขา (Daily Production)
             </h2>
           </div>
-          <div className="flex items-center gap-3 text-xs text-slate-500 font-medium">
+          <div className="flex items-center gap-3 text-xs text-slate-500 font-medium flex-wrap">
             <span className="flex items-center gap-1">
               <Truck className="w-3.5 h-3.5 text-blue-600" /> Total_Dispatched (คำนวณอัตโนมัติ)
             </span>
             <span className="flex items-center gap-1">
               <Archive className="w-3.5 h-3.5 text-purple-600" /> Total_Leftover (คำนวณอัตโนมัติ)
             </span>
+            <span className="sm:hidden text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+              👉 เลื่อนแนวนอนเพื่อดูครบทุกช่อง
+            </span>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs sm:text-sm border-collapse">
-            <thead className="bg-slate-50 text-slate-500 font-semibold uppercase text-[10px] sm:text-xs tracking-wider border-b border-slate-200">
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left text-xs sm:text-sm border-collapse min-w-[700px]">
+            <thead className="bg-slate-50 text-slate-600 font-semibold uppercase text-[11px] sm:text-xs tracking-wider border-b border-slate-200">
               <tr>
-                <th className="px-4 py-3.5">Date</th>
-                <th className="px-4 py-3.5">Product_Code</th>
-                <th className="px-4 py-3.5">Product_Name</th>
-                <th className="px-4 py-3.5 text-right text-slate-900">Produced_Qty</th>
-                <th className="px-3.5 py-3.5 text-right">Dispatch_Branch_A</th>
-                <th className="px-3.5 py-3.5 text-right">Dispatch_Branch_B</th>
-                <th className="px-3.5 py-3.5 text-right">Leftover_Branch_A</th>
-                <th className="px-3.5 py-3.5 text-right">Leftover_Branch_B</th>
+                <th className="px-4 py-3.5">วันที่ (Date)</th>
+                <th className="px-4 py-3.5">รหัสสินค้า</th>
+                <th className="px-4 py-3.5">ชื่อสินค้า</th>
+                <th className="px-4 py-3.5 text-right text-slate-900 font-bold">ผลิตจริง (Produced)</th>
+                <th className="px-3.5 py-3.5 text-right">ส่งสาขา A</th>
+                <th className="px-3.5 py-3.5 text-right">ส่งสาขา B</th>
+                <th className="px-3.5 py-3.5 text-right">เหลือร้าน A</th>
+                <th className="px-3.5 py-3.5 text-right">เหลือร้าน B</th>
                 <th className="px-4 py-3.5 text-right font-bold text-slate-900 bg-slate-100/70">
-                  Total_Dispatched (สูตร)
+                  รวมส่ง (Dispatched)
                 </th>
                 <th className="px-4 py-3.5 text-right font-bold text-slate-900 bg-slate-100/70">
-                  Total_Leftover (สูตร)
+                  รวมเหลือ (Leftover)
                 </th>
-                <th className="px-4 py-3.5 text-center">ตัดสต็อกอัตโนมัติ</th>
+                <th className="px-4 py-3.5 text-center">จัดการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {filteredProductions.map((p, idx) => (
                 <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 font-mono text-slate-600 whitespace-nowrap">
+                  <td className="px-4 py-3.5 font-mono text-slate-700 font-medium whitespace-nowrap text-xs sm:text-sm">
                     {p.Date}
                   </td>
-                  <td className="px-4 py-3 font-mono font-bold text-slate-900">
+                  <td className="px-4 py-3.5 font-mono font-bold text-slate-900 text-xs sm:text-sm">
                     {p.Product_Code}
                   </td>
-                  <td className="px-4 py-3 font-medium text-slate-900">
+                  <td className="px-4 py-3.5 font-medium text-slate-900 text-xs sm:text-sm">
                     {getProductName(p.Product_Code)}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-slate-900">
+                  <td className="px-4 py-3.5 text-right font-mono font-bold text-blue-700 text-xs sm:text-sm bg-blue-50/30">
                     {p.Produced_Qty.toLocaleString()}
                   </td>
-                  <td className="px-3.5 py-3 text-right font-mono text-slate-600">
+                  <td className="px-3.5 py-3.5 text-right font-mono text-slate-700 text-xs sm:text-sm">
                     {p.Dispatch_Branch_A.toLocaleString()}
                   </td>
-                  <td className="px-3.5 py-3 text-right font-mono text-slate-600">
+                  <td className="px-3.5 py-3.5 text-right font-mono text-slate-700 text-xs sm:text-sm">
                     {p.Dispatch_Branch_B.toLocaleString()}
                   </td>
-                  <td className="px-3.5 py-3 text-right font-mono text-slate-600">
+                  <td className="px-3.5 py-3.5 text-right font-mono text-slate-700 text-xs sm:text-sm">
                     {p.Leftover_Branch_A.toLocaleString()}
                   </td>
-                  <td className="px-3.5 py-3 text-right font-mono text-slate-600">
+                  <td className="px-3.5 py-3.5 text-right font-mono text-slate-700 text-xs sm:text-sm">
                     {p.Leftover_Branch_B.toLocaleString()}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-slate-900 bg-slate-50/50">
+                  <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-900 bg-slate-100/50 text-xs sm:text-sm">
                     {p.Total_Dispatched.toLocaleString()}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-slate-900 bg-slate-50/50">
+                  <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-900 bg-slate-100/50 text-xs sm:text-sm">
                     {p.Total_Leftover.toLocaleString()}
                   </td>
-                  <td className="px-4 py-3 text-center">
-                    <div className="flex items-center justify-center gap-1.5">
+                  <td className="px-4 py-3.5 text-center">
+                    <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
                       {onEditProduction && (
                         <button
                           onClick={() => onEditProduction(p, idx)}
                           title="แก้ไขรายการผลิตนี้"
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors min-h-[32px]"
                         >
-                          <Edit2 className="w-3 h-3" />
-                          แก้ไข
+                          <Edit2 className="w-3.5 h-3.5" />
+                          <span>แก้ไข</span>
                         </button>
                       )}
                       <button
                         onClick={() => onAutoDeductBatch(p)}
                         title="กดเพื่อตัดสต็อกวัตถุดิบตามสูตร BOM x ยอดผลิตลงใน Stock_Transactions"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 transition-colors"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 transition-colors min-h-[32px]"
                       >
-                        <Zap className="w-3 h-3 text-amber-600" />
-                        ตัดสต็อกอัตโนมัติ
+                        <Zap className="w-3.5 h-3.5 text-amber-600" />
+                        <span>ตัดสต็อก</span>
                       </button>
                       {onDeleteProduction && (
                         <button
@@ -210,10 +213,10 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
                               onDeleteProduction(idx);
                             }
                           }}
-                          className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors min-h-[32px] min-w-[32px] flex items-center justify-center"
                           title="ลบรายการนี้"
                         >
-                          <X className="w-3.5 h-3.5" />
+                          <X className="w-4 h-4" />
                         </button>
                       )}
                     </div>

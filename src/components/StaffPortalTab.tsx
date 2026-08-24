@@ -119,24 +119,24 @@ export const StaffPortalTab: React.FC<StaffPortalTabProps> = ({
       </div>
 
       {/* Special Highlight Banner: End of Month Physical Stock Count */}
-      <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 rounded-2xl p-5 text-white shadow-md border border-indigo-700/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 rounded-2xl p-5 sm:p-6 text-white shadow-md border border-indigo-700/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-start gap-3.5">
           <div className="w-12 h-12 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-indigo-200 shrink-0 mt-0.5">
             <ClipboardCheck className="w-6 h-6" />
           </div>
           <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[11px] font-bold mb-1">
-              <Sparkles className="w-3 h-3 text-amber-300" />
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30 text-xs font-bold mb-1">
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
               <span>ภารกิจสิ้นเดือน (End of Month Task)</span>
             </div>
             <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
               เช็คสต็อกสิ้นเดือนที่เกิดขึ้นจริง (Physical Stock Count)
             </h3>
-            <p className="text-xs text-indigo-200 max-w-2xl mt-0.5 leading-relaxed">
-              ดึงรายการวัตถุดิบทั้งหมด ({materials.length} รายการ) จาก <b>ทะเบียนวัตถุดิบ (Master Materials)</b> ที่ผู้จัดการสร้างไว้ เพื่อให้พนักงานกรอกยอดนับจริงปลายเดือน และกดยกยอดไปเป็น <b>สต็อกยกมาต้นเดือนถัดไป (Opening Stock)</b>
+            <p className="text-xs sm:text-sm text-indigo-200 max-w-2xl mt-1 leading-relaxed">
+              ดึงรายการวัตถุดิบทั้งหมด ({materials.length} รายการ) จาก <b>ทะเบียนวัตถุดิบ</b> เพื่อให้พนักงานกรอกยอดนับจริงปลายเดือน และกดยกยอดไปเป็น <b>สต็อกยกมาต้นเดือนถัดไป (Opening Stock)</b>
             </p>
             {latestStockCount && (
-              <div className="text-[11px] text-indigo-300 mt-2 flex items-center gap-2">
+              <div className="text-xs text-indigo-300 mt-2 flex items-center gap-2">
                 <span>บันทึกการนับล่าสุด: ประจำเดือน <b>{latestStockCount.Month}</b> (นับเมื่อ {latestStockCount.Count_Date}) โดย {latestStockCount.Counted_By}</span>
               </div>
             )}
@@ -146,7 +146,7 @@ export const StaffPortalTab: React.FC<StaffPortalTabProps> = ({
         <button
           onClick={onOpenStockCountModal}
           id="btn-staff-stock-count"
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-white text-indigo-900 hover:bg-indigo-50 shadow-lg transition-all transform active:scale-95 shrink-0"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold bg-white text-indigo-900 hover:bg-indigo-50 shadow-lg transition-all transform active:scale-95 shrink-0 min-h-[44px]"
         >
           <ClipboardCheck className="w-4 h-4 text-indigo-600" />
           <span>กรอกผลเช็คสต็อกสิ้นเดือน</span>
@@ -155,28 +155,30 @@ export const StaffPortalTab: React.FC<StaffPortalTabProps> = ({
 
       {/* 4 Main Action Cards for Staff */}
       <div>
-        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+        <h3 className="text-xs sm:text-sm font-bold text-slate-600 uppercase tracking-wider mb-3">
           4 เมนูกรอกข้อมูลประจำวันสำหรับพนักงาน (Daily Entry Actions)
         </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
           {/* Card 1: Daily Production */}
           <button
             onClick={onOpenNewProdModal}
-            className="group text-left bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-blue-500 hover:shadow-md transition-all relative overflow-hidden"
+            className="group text-left bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-blue-500 hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between"
           >
-            <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-              <CalendarCheck className="w-6 h-6" />
+            <div>
+              <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                <CalendarCheck className="w-6 h-6" />
+              </div>
+              <div className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">
+                ขั้นตอนที่ 1
+              </div>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
+                บันทึกการผลิตประจำวัน
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1 leading-relaxed">
+                กรอกจำนวนผลิตจริง (ชิ้น) ระบบจะตัดสต็อกวัตถุดิบตามสูตร BOM อัตโนมัติ
+              </p>
             </div>
-            <div className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">
-              ขั้นตอนที่ 1
-            </div>
-            <h3 className="text-base font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
-              บันทึกการผลิตประจำวัน
-            </h3>
-            <p className="text-xs text-slate-500 mt-1">
-              กรอกจำนวนผลิตจริง (ชิ้น) ระบบจะตัดสต็อกวัตถุดิบตามสูตร BOM อัตโนมัติ
-            </p>
-            <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-blue-600">
+            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-1 text-xs sm:text-sm font-bold text-blue-600">
               <span>+ บันทึกยอดผลิต</span>
             </div>
           </button>
@@ -184,21 +186,23 @@ export const StaffPortalTab: React.FC<StaffPortalTabProps> = ({
           {/* Card 2: Dispatch & Leftovers */}
           <button
             onClick={onOpenNewProdModal}
-            className="group text-left bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-indigo-500 hover:shadow-md transition-all relative overflow-hidden"
+            className="group text-left bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-indigo-500 hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between"
           >
-            <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-              <Truck className="w-6 h-6" />
+            <div>
+              <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                <Truck className="w-6 h-6" />
+              </div>
+              <div className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-1">
+                ขั้นตอนที่ 2
+              </div>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                ยอดส่งสาขา & ของเหลือ
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1 leading-relaxed">
+                บันทึกยอดกระจายสินค้าไปสาขา A / B และจำนวนสินค้าคงเหลือหน้าร้าน
+              </p>
             </div>
-            <div className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-1">
-              ขั้นตอนที่ 2
-            </div>
-            <h3 className="text-base font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
-              ยอดส่งสาขา & ของเหลือ
-            </h3>
-            <p className="text-xs text-slate-500 mt-1">
-              บันทึกยอดกระจายสินค้าไปสาขา A / B และจำนวนสินค้าคงเหลือหน้าร้าน
-            </p>
-            <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-indigo-600">
+            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-1 text-xs sm:text-sm font-bold text-indigo-600">
               <span>+ บันทึกยอดจัดส่ง</span>
             </div>
           </button>
@@ -206,21 +210,23 @@ export const StaffPortalTab: React.FC<StaffPortalTabProps> = ({
           {/* Card 3: Material Receive */}
           <button
             onClick={() => onOpenNewTxModal('Receive')}
-            className="group text-left bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-emerald-500 hover:shadow-md transition-all relative overflow-hidden"
+            className="group text-left bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-emerald-500 hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between"
           >
-            <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-              <ArrowDownLeft className="w-6 h-6" />
+            <div>
+              <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                <ArrowDownLeft className="w-6 h-6" />
+              </div>
+              <div className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1">
+                รับของเข้าคลัง
+              </div>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 group-hover:text-emerald-600 transition-colors">
+                บันทึกรับวัตถุดิบ (Receive)
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1 leading-relaxed">
+                ลงบันทึกเมื่อมีวัตถุดิบและแพ็กเกจจิ้งส่งตรงมาจากซัพพลายเออร์
+              </p>
             </div>
-            <div className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1">
-              รับของเข้าคลัง
-            </div>
-            <h3 className="text-base font-bold text-slate-900 group-hover:text-emerald-600 transition-colors">
-              บันทึกรับวัตถุดิบ (Receive)
-            </h3>
-            <p className="text-xs text-slate-500 mt-1">
-              ลงบันทึกเมื่อมีวัตถุดิบและแพ็กเกจจิ้งส่งตรงมาจากซัพพลายเออร์
-            </p>
-            <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-emerald-600">
+            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-1 text-xs sm:text-sm font-bold text-emerald-600">
               <span>+ บันทึกรับเข้า</span>
             </div>
           </button>
@@ -228,21 +234,23 @@ export const StaffPortalTab: React.FC<StaffPortalTabProps> = ({
           {/* Card 4: Material Usage */}
           <button
             onClick={() => onOpenNewTxModal('Actual Usage')}
-            className="group text-left bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-amber-500 hover:shadow-md transition-all relative overflow-hidden"
+            className="group text-left bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-amber-500 hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between"
           >
-            <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-              <ArrowUpRight className="w-6 h-6" />
+            <div>
+              <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                <ArrowUpRight className="w-6 h-6" />
+              </div>
+              <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">
+                เบิกใช้จริง / ของเสีย
+              </div>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 group-hover:text-amber-600 transition-colors">
+                เบิกใช้จริง (Actual Usage)
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1 leading-relaxed">
+                บันทึกการชั่งใช้จริงหน้าเตา หรือเบิกเคสเสีย เพื่อนำไปคิด Variance
+              </p>
             </div>
-            <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">
-              เบิกใช้จริง / ของเสีย
-            </div>
-            <h3 className="text-base font-bold text-slate-900 group-hover:text-amber-600 transition-colors">
-              เบิกใช้จริง (Actual Usage)
-            </h3>
-            <p className="text-xs text-slate-500 mt-1">
-              บันทึกการชั่งใช้จริงหน้าเตา หรือเบิกเคสเสีย เพื่อนำไปคิด Variance
-            </p>
-            <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-amber-600">
+            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-1 text-xs sm:text-sm font-bold text-amber-600">
               <span>+ บันทึกเบิกใช้</span>
             </div>
           </button>

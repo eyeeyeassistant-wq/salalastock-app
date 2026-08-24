@@ -35,6 +35,14 @@ import {
   appendProductionToSheet,
   syncViaWebhook,
 } from './services/googleSheets';
+import {
+  testFirestoreConnection,
+  loadCloudData,
+  loadCloudSettings,
+  saveCloudDataDebounced,
+  saveCloudSettings,
+  subscribeToCloudChanges,
+} from './services/firestore';
 
 // Components
 import { Navbar } from './components/Navbar';
@@ -72,7 +80,7 @@ export default function App() {
     return localStorage.getItem('stock_admin_pin') || '8888';
   });
 
-  // Core Data State (Saved to localStorage or synced with Google Sheets)
+  // Core Data State (Saved to Cloud Firestore & localStorage)
   const [materials, setMaterials] = useState<MasterMaterial[]>(() => {
     const saved = localStorage.getItem('stock_materials');
     return saved ? JSON.parse(saved) : INITIAL_MATERIALS;
@@ -119,7 +127,7 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
-  // Background Auto-Sync Trigger
+  // Background Cloud Firestore and Google Sheets Auto-Sync Trigger
   const triggerAutoSync = async (overrides?: {
     materials?: MasterMaterial[];
     recipes?: BOMRecipe[];
@@ -127,6 +135,23 @@ export default function App() {
     transactions?: StockTransaction[];
     stockCountRecords?: MonthlyStockCountRecord[];
   }) => {
+    const curMats = overrides?.materials || materials;
+    const curRecipes = overrides?.recipes || recipes;
+    const curProds = overrides?.productions || productions;
+    const curTxs = overrides?.transactions || transactions;
+    const curCounts = overrides?.stockCountRecords || stockCountRecords;
+
+    // 1. Always persist to Cloud Firestore database
+    saveCloudDataDebounced({
+      materials: curMats,
+      recipes: curRecipes,
+      productions: curProds,
+      transactions: curTxs,
+      stockCountRecords: curCounts,
+      isInitialized: true,
+    });
+
+    // 2. Sync to Google Sheets if configured
     const isAuto = localStorage.getItem('stock_auto_sync') !== 'false';
     if (!isAuto) return;
 
@@ -134,12 +159,6 @@ export default function App() {
     const currentSheetId = spreadsheetId || localStorage.getItem('stock_spreadsheet_id');
 
     if (!currentWebhook && !currentSheetId) return;
-
-    const curMats = overrides?.materials || materials;
-    const curRecipes = overrides?.recipes || recipes;
-    const curProds = overrides?.productions || productions;
-    const curTxs = overrides?.transactions || transactions;
-    const curCounts = overrides?.stockCountRecords || stockCountRecords;
 
     try {
       if (currentWebhook) {
@@ -153,6 +172,7 @@ export default function App() {
         const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
         setLastSyncTime(nowStr);
         localStorage.setItem('stock_last_sync', nowStr);
+        saveCloudSettings({ lastSyncTime: nowStr });
       } else if (currentSheetId) {
         const currentToken = token || (await getAccessToken());
         if (currentToken) {
@@ -167,6 +187,7 @@ export default function App() {
           const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
           setLastSyncTime(nowStr);
           localStorage.setItem('stock_last_sync', nowStr);
+          saveCloudSettings({ lastSyncTime: nowStr });
         }
       }
     } catch (err) {
@@ -324,7 +345,7 @@ export default function App() {
     triggerAutoSync({ materials: nextMats });
   };
 
-  // Save to localStorage whenever core data changes
+  // Save to localStorage & Cloud whenever core data changes
   useEffect(() => {
     localStorage.setItem('stock_materials', JSON.stringify(materials));
   }, [materials]);
@@ -340,6 +361,151 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('stock_transactions', JSON.stringify(transactions));
   }, [transactions]);
+
+  useEffect(() => {
+    localStorage.setItem('stock_count_records', JSON.stringify(stockCountRecords));
+  }, [stockCountRecords]);
+
+  // Load persistent data & settings from Firestore Cloud Database on startup
+  useEffect(() => {
+    testFirestoreConnection();
+
+    let isSubscribed = true;
+
+    // 1. Initial fetch from Cloud Firestore to guarantee persistent data across devices & days
+    (async () => {
+      try {
+        const [cloudData, cloudSettings] = await Promise.all([
+          loadCloudData(),
+          loadCloudSettings(),
+        ]);
+
+        if (!isSubscribed) return;
+
+        if (cloudData && cloudData.isInitialized) {
+          if (cloudData.materials && cloudData.materials.length > 0) {
+            setMaterials(cloudData.materials);
+            localStorage.setItem('stock_materials', JSON.stringify(cloudData.materials));
+          }
+          if (cloudData.recipes && cloudData.recipes.length > 0) {
+            setRecipes(cloudData.recipes);
+            localStorage.setItem('stock_recipes', JSON.stringify(cloudData.recipes));
+          }
+          if (cloudData.productions) {
+            setProductions(cloudData.productions);
+            localStorage.setItem('stock_productions', JSON.stringify(cloudData.productions));
+          }
+          if (cloudData.transactions) {
+            setTransactions(cloudData.transactions);
+            localStorage.setItem('stock_transactions', JSON.stringify(cloudData.transactions));
+          }
+          if (cloudData.stockCountRecords) {
+            setStockCountRecords(cloudData.stockCountRecords);
+            localStorage.setItem('stock_count_records', JSON.stringify(cloudData.stockCountRecords));
+          }
+        } else {
+          // Cloud database is empty (first boot), seed with baseline dataset
+          saveCloudDataDebounced({
+            materials,
+            recipes,
+            productions,
+            transactions,
+            stockCountRecords,
+            isInitialized: true,
+          }, 0);
+        }
+
+        if (cloudSettings) {
+          if (cloudSettings.webhookUrl !== undefined) {
+            setWebhookUrl(cloudSettings.webhookUrl);
+            if (cloudSettings.webhookUrl) {
+              localStorage.setItem('stock_webhook_url', cloudSettings.webhookUrl);
+            } else {
+              localStorage.removeItem('stock_webhook_url');
+            }
+          }
+          if (cloudSettings.spreadsheetId !== undefined) {
+            setSpreadsheetId(cloudSettings.spreadsheetId);
+            if (cloudSettings.spreadsheetId) {
+              localStorage.setItem('stock_spreadsheet_id', cloudSettings.spreadsheetId);
+            } else {
+              localStorage.removeItem('stock_spreadsheet_id');
+            }
+          }
+          if (cloudSettings.spreadsheetUrl !== undefined) {
+            setSpreadsheetUrl(cloudSettings.spreadsheetUrl);
+            if (cloudSettings.spreadsheetUrl) {
+              localStorage.setItem('stock_spreadsheet_url', cloudSettings.spreadsheetUrl);
+            } else {
+              localStorage.removeItem('stock_spreadsheet_url');
+            }
+          }
+          if (cloudSettings.autoSyncEnabled !== undefined) {
+            setAutoSyncEnabled(cloudSettings.autoSyncEnabled);
+            localStorage.setItem('stock_auto_sync', cloudSettings.autoSyncEnabled ? 'true' : 'false');
+          }
+          if (cloudSettings.lastSyncTime !== undefined) {
+            setLastSyncTime(cloudSettings.lastSyncTime);
+            if (cloudSettings.lastSyncTime) {
+              localStorage.setItem('stock_last_sync', cloudSettings.lastSyncTime);
+            }
+          }
+          if (cloudSettings.adminPin) {
+            setAdminPin(cloudSettings.adminPin);
+            localStorage.setItem('stock_admin_pin', cloudSettings.adminPin);
+          }
+        }
+      } catch (err) {
+        console.warn('Initial cloud state fetch notice:', err);
+      }
+    })();
+
+    // 2. Real-time subscription to cloud changes across tabs / devices
+    const unsubscribeCloud = subscribeToCloudChanges(
+      (data) => {
+        if (data && data.isInitialized) {
+          if (data.materials) setMaterials(data.materials);
+          if (data.recipes) setRecipes(data.recipes);
+          if (data.productions) setProductions(data.productions);
+          if (data.transactions) setTransactions(data.transactions);
+          if (data.stockCountRecords) setStockCountRecords(data.stockCountRecords);
+        }
+      },
+      (settings) => {
+        if (settings) {
+          if (settings.webhookUrl !== undefined) {
+            setWebhookUrl(settings.webhookUrl);
+            if (settings.webhookUrl) localStorage.setItem('stock_webhook_url', settings.webhookUrl);
+          }
+          if (settings.spreadsheetId !== undefined) {
+            setSpreadsheetId(settings.spreadsheetId);
+            if (settings.spreadsheetId) localStorage.setItem('stock_spreadsheet_id', settings.spreadsheetId);
+          }
+          if (settings.spreadsheetUrl !== undefined) {
+            setSpreadsheetUrl(settings.spreadsheetUrl);
+            if (settings.spreadsheetUrl) localStorage.setItem('stock_spreadsheet_url', settings.spreadsheetUrl);
+          }
+          if (settings.autoSyncEnabled !== undefined) {
+            setAutoSyncEnabled(settings.autoSyncEnabled);
+            localStorage.setItem('stock_auto_sync', settings.autoSyncEnabled ? 'true' : 'false');
+          }
+          if (settings.lastSyncTime !== undefined) {
+            setLastSyncTime(settings.lastSyncTime);
+            if (settings.lastSyncTime) localStorage.setItem('stock_last_sync', settings.lastSyncTime);
+          }
+          if (settings.adminPin) {
+            setAdminPin(settings.adminPin);
+            localStorage.setItem('stock_admin_pin', settings.adminPin);
+          }
+        }
+      }
+    );
+
+    return () => {
+      isSubscribed = false;
+      unsubscribeCloud();
+    };
+  }, []);
 
   // Auth State Listener
   useEffect(() => {
@@ -444,12 +610,20 @@ export default function App() {
       const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
       setLastSyncTime(nowStr);
       localStorage.setItem('stock_last_sync', nowStr);
+      
+      // Persist Webhook & Sync settings to Cloud Database permanently
+      await saveCloudSettings({
+        webhookUrl: url,
+        autoSyncEnabled: true,
+        lastSyncTime: nowStr,
+      });
+
       confetti({
         particleCount: 70,
         spread: 50,
         origin: { y: 0.6 },
       });
-      showNotification('⚡ เชื่อมต่อ Google Apps Script Webhook และซิงค์ข้อมูลสำเร็จ!');
+      showNotification('⚡ เชื่อมต่อ Google Apps Script Webhook และบันทึกบนคลาวด์ถาวรแล้ว!');
     } catch (err: any) {
       console.error(err);
       throw err;
@@ -461,6 +635,7 @@ export default function App() {
   const handleToggleAutoSync = (enabled: boolean) => {
     setAutoSyncEnabled(enabled);
     localStorage.setItem('stock_auto_sync', enabled ? 'true' : 'false');
+    saveCloudSettings({ autoSyncEnabled: enabled });
     showNotification(enabled ? '🟢 เปิดการซิงค์อัตโนมัติเข้า Google Sheet แล้ว' : '⏸️ ปิดการซิงค์อัตโนมัติชั่วคราว');
     if (enabled) {
       triggerAutoSync();
@@ -502,13 +677,19 @@ export default function App() {
       setLastSyncTime(nowStr);
       localStorage.setItem('stock_last_sync', nowStr);
 
+      await saveCloudSettings({
+        spreadsheetId: sheetInfo.spreadsheetId,
+        spreadsheetUrl: sheetInfo.spreadsheetUrl,
+        lastSyncTime: nowStr,
+      });
+
       confetti({
         particleCount: 80,
         spread: 60,
         origin: { y: 0.7 },
       });
 
-      showNotification('✨ สร้าง Google Sheet พร้อมทั้ง 5 Tab และสูตรสำเร็จแล้ว!');
+      showNotification('✨ สร้าง Google Sheet พร้อมบันทึกการเชื่อมต่อไปยังคลาวด์ถาวรแล้ว!');
     } catch (err: any) {
       console.error(err);
       throw err;
@@ -549,7 +730,13 @@ export default function App() {
       setLastSyncTime(nowStr);
       localStorage.setItem('stock_last_sync', nowStr);
 
-      showNotification('✅ เชื่อมต่อและส่งข้อมูลขึ้น Google Sheet สำเร็จแล้ว!');
+      await saveCloudSettings({
+        spreadsheetId: sheetId,
+        spreadsheetUrl: url,
+        lastSyncTime: nowStr,
+      });
+
+      showNotification('✅ เชื่อมต่อและบันทึกข้อมูล Google Sheet ไปยังคลาวด์เรียบร้อยแล้ว!');
     } catch (err: any) {
       console.error(err);
       throw err;
@@ -606,6 +793,7 @@ export default function App() {
       const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
       setLastSyncTime(nowStr);
       localStorage.setItem('stock_last_sync', nowStr);
+      saveCloudSettings({ lastSyncTime: nowStr });
       showNotification('✅ ส่งข้อมูลจริงทั้งหมดขึ้น Google Sheet สำเร็จแล้ว!');
     } catch (err: any) {
       console.error(err);
@@ -626,6 +814,12 @@ export default function App() {
       localStorage.removeItem('stock_spreadsheet_url');
       localStorage.removeItem('stock_webhook_url');
       localStorage.removeItem('stock_last_sync');
+      saveCloudSettings({
+        spreadsheetId: null,
+        spreadsheetUrl: null,
+        webhookUrl: null,
+        lastSyncTime: null,
+      });
       showNotification('ยกเลิกการเชื่อมต่อกับ Google Sheet เรียบร้อย');
     }
   };

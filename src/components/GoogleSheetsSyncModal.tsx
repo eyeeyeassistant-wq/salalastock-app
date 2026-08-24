@@ -63,6 +63,12 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [showScriptCode, setShowScriptCode] = useState(false);
 
+  React.useEffect(() => {
+    if (webhookUrl) {
+      setWebhookInput(webhookUrl);
+    }
+  }, [webhookUrl, isOpen]);
+
   if (!isOpen) return null;
 
   const handleCopyScript = () => {
