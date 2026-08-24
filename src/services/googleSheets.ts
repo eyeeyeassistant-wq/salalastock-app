@@ -465,16 +465,13 @@ export async function appendProductionToSheet(
     prod.Date,
     prod.Product_Code,
     prod.Produced_Qty,
-    prod.Dispatch_Branch_A,
-    prod.Dispatch_Branch_B,
-    prod.Leftover_Branch_A,
-    prod.Leftover_Branch_B,
-    '', // Managed by ARRAYFORMULA
-    '', // Managed by ARRAYFORMULA
+    prod.Dispatch_Branch_A || 0,
+    prod.Dispatch_Branch_B || 0,
+    '', // Managed by ARRAYFORMULA (Total_Dispatched)
   ];
 
   const response = await fetch(
-    `${SHEETS_API_BASE}/${spreadsheetId}/values/Daily_Production!A:I:append?valueInputOption=USER_ENTERED`,
+    `${SHEETS_API_BASE}/${spreadsheetId}/values/Daily_Production!A:F:append?valueInputOption=USER_ENTERED`,
     {
       method: 'POST',
       headers: {

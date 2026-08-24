@@ -101,7 +101,7 @@ export const StaffPortalTab: React.FC<StaffPortalTabProps> = ({
               <span>โหมดหน้าบ้านสำหรับพนักงาน (Staff Daily Operations Portal)</span>
             </div>
             <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
-              บันทึกการผลิตประจำวัน, ยอดจัดส่งสาขา, ของเหลือ และการเบิก-รับวัตถุดิบ
+              บันทึกการผลิตประจำวัน, ยอดจัดส่งสาขา และการเบิก-รับวัตถุดิบ
             </h2>
             <p className="text-xs text-slate-300 max-w-2xl">
               พนักงานมีหน้าที่กรอกยอดประจำวันอย่างรวดเร็ว ตรวจนับสต็อกจริงสิ้นเดือนเพื่อยกยอด และดูแลการเบิกรับวัตถุดิบ

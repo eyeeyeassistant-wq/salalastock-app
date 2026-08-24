@@ -136,17 +136,20 @@ export function calculateIngredientsForBatch(
  * Extract all distinct YYYY-MM months available in production and transaction records
  */
 export function getAvailableMonths(
-  productions: DailyProduction[],
-  transactions: StockTransaction[]
+  productions: DailyProduction[] = [],
+  transactions: StockTransaction[] = []
 ): string[] {
   const months = new Set<string>();
-  productions.forEach((p) => {
-    if (p.Date && p.Date.length >= 7) {
+  const safeProds = Array.isArray(productions) ? productions : [];
+  const safeTxs = Array.isArray(transactions) ? transactions : [];
+
+  safeProds.forEach((p) => {
+    if (p && typeof p.Date === 'string' && p.Date.length >= 7) {
       months.add(p.Date.substring(0, 7));
     }
   });
-  transactions.forEach((t) => {
-    if (t.Date && t.Date.length >= 7) {
+  safeTxs.forEach((t) => {
+    if (t && typeof t.Date === 'string' && t.Date.length >= 7) {
       months.add(t.Date.substring(0, 7));
     }
   });
@@ -163,20 +166,23 @@ export function getAvailableMonths(
  * Filter and compute summary for a specific month (YYYY-MM) or all
  */
 export function generateMonthlySummaryForPeriod(
-  materials: MasterMaterial[],
-  recipes: BOMRecipe[],
-  productions: DailyProduction[],
-  transactions: StockTransaction[],
-  selectedMonth: string, // 'all' or 'YYYY-MM'
+  materials: MasterMaterial[] = [],
+  recipes: BOMRecipe[] = [],
+  productions: DailyProduction[] = [],
+  transactions: StockTransaction[] = [],
+  selectedMonth: string = 'all', // 'all' or 'YYYY-MM'
   physicalCounts?: { [rmCode: string]: number }
 ): MonthlyStockSummary[] {
-  const filteredProductions = selectedMonth === 'all'
-    ? productions
-    : productions.filter((p) => p.Date.startsWith(selectedMonth));
+  const safeProds = Array.isArray(productions) ? productions : [];
+  const safeTxs = Array.isArray(transactions) ? transactions : [];
 
-  const filteredTransactions = selectedMonth === 'all'
-    ? transactions
-    : transactions.filter((t) => t.Date.startsWith(selectedMonth));
+  const filteredProductions = (!selectedMonth || selectedMonth === 'all')
+    ? safeProds
+    : safeProds.filter((p) => p && typeof p.Date === 'string' && p.Date.startsWith(selectedMonth));
 
-  return generateMonthlySummary(materials, recipes, filteredProductions, filteredTransactions, physicalCounts);
+  const filteredTransactions = (!selectedMonth || selectedMonth === 'all')
+    ? safeTxs
+    : safeTxs.filter((t) => t && typeof t.Date === 'string' && t.Date.startsWith(selectedMonth));
+
+  return generateMonthlySummary(materials || [], recipes || [], filteredProductions, filteredTransactions, physicalCounts);
 }

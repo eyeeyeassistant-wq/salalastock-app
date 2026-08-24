@@ -55,7 +55,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
   onPushAllToSheet,
   onDisconnectSheet,
 }) => {
-  const [activeTab, setActiveTab] = useState<'webhook' | 'oauth'>('webhook');
+  const [activeTab, setActiveTab] = useState<'oauth' | 'webhook'>('oauth');
   const [webhookInput, setWebhookInput] = useState(webhookUrl || '');
   const [existingIdInput, setExistingIdInput] = useState('');
   const [activeOAuthMode, setActiveOAuthMode] = useState<'create' | 'link'>('create');
@@ -252,7 +252,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
             }`}
           >
             <Zap className="w-4 h-4 text-emerald-600" />
-            <span>วิธีที่ 1: Google Apps Script Webhook (แนะนำที่สุด ไม่ต้องล็อกอิน)</span>
+            <span>วิธีที่ 1: Google Apps Script Webhook (แนะนำสำหรับทีม/พนักงานหลายคน)</span>
           </button>
           <button
             type="button"
@@ -413,15 +413,36 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
               </div>
             ) : (
               <div className="space-y-4">
+                {/* Logged in User Badge */}
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    {user.photoURL ? (
+                      <img src={user.photoURL} alt="Avatar" className="w-7 h-7 rounded-full border border-emerald-300" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="w-7 h-7 rounded-full bg-emerald-700 text-white font-bold text-xs flex items-center justify-center">
+                        {(user.displayName || user.email || 'U').charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div>
+                      <div className="text-xs font-bold text-emerald-950">
+                        เข้าสู่ระบบด้วย: {user.displayName || user.email}
+                      </div>
+                      <div className="text-[10px] text-emerald-700">
+                        บัญชี Google นี้ได้รับสิทธิ์สร้างและบันทึก Google Sheets อัตโนมัติแล้ว
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex rounded-lg bg-slate-100 p-1 text-xs font-semibold text-slate-600">
                   <button
                     type="button"
                     onClick={() => setActiveOAuthMode('create')}
                     className={`flex-1 py-1.5 rounded-md text-center transition-colors ${
-                      activeOAuthMode === 'create' ? 'bg-white text-slate-900 shadow-xs' : ''
+                      activeOAuthMode === 'create' ? 'bg-white text-slate-900 shadow-xs font-bold' : ''
                     }`}
                   >
-                    1. สร้าง Google Sheet ใหม่ใน Drive ของคุณ
+                    1. สร้าง Google Sheet ใหม่ใน Drive ของคุณ (คลิกเดียวจบ)
                   </button>
                   <button
                     type="button"

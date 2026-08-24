@@ -177,11 +177,14 @@ export const PhysicalStockCountModal: React.FC<PhysicalStockCountModalProps> = (
     let exactCount = 0;
     let shortageCount = 0;
     let overageCount = 0;
-    let totalItems = systemSummaries.length;
+    const list = systemSummaries || [];
+    let totalItems = list.length;
 
-    systemSummaries.forEach((s) => {
+    list.forEach((s) => {
+      if (!s) return;
+      const endingNum = typeof s.Ending_Stock === 'number' && !isNaN(s.Ending_Stock) ? s.Ending_Stock : 0;
       const counted = parseFloat(counts[s.RM_Code]) || 0;
-      const diff = Number((counted - s.Ending_Stock).toFixed(3));
+      const diff = Number((counted - endingNum).toFixed(3));
       if (Math.abs(diff) < 0.001) {
         exactCount++;
       } else if (diff < 0) {
@@ -197,14 +200,15 @@ export const PhysicalStockCountModal: React.FC<PhysicalStockCountModalProps> = (
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const items: PhysicalStockCountItem[] = systemSummaries.map((s) => {
-      const counted = parseFloat(counts[s.RM_Code]) || 0;
-      const variance = Number((counted - s.Ending_Stock).toFixed(3));
+    const items: PhysicalStockCountItem[] = (systemSummaries || []).map((s) => {
+      const endingNum = typeof s.Ending_Stock === 'number' && !isNaN(s.Ending_Stock) ? s.Ending_Stock : 0;
+      const counted = counts[s.RM_Code] !== undefined ? (parseFloat(counts[s.RM_Code]) || 0) : endingNum;
+      const variance = Number((counted - endingNum).toFixed(3));
       return {
-        RM_Code: s.RM_Code,
-        RM_Name: s.RM_Name,
-        Unit: s.Unit,
-        System_Qty: s.Ending_Stock,
+        RM_Code: s.RM_Code || '',
+        RM_Name: s.RM_Name || '',
+        Unit: s.Unit || '',
+        System_Qty: endingNum,
         Counted_Qty: counted,
         Variance: variance,
         Note: itemNotes[s.RM_Code] || '',
@@ -215,7 +219,7 @@ export const PhysicalStockCountModal: React.FC<PhysicalStockCountModalProps> = (
       id: existingRecord?.id || `count-${Date.now()}`,
       Month: month,
       Count_Date: countDate,
-      Counted_By: countedBy || 'พนักงานหน้าบ้าน',
+      Counted_By: countedBy || 'พนักงานประจำร้าน / ทีมผลิต',
       Note: note,
       Items: items,
       CreatedAt: new Date().toISOString(),
@@ -453,9 +457,10 @@ export const PhysicalStockCountModal: React.FC<PhysicalStockCountModalProps> = (
               </div>
             ) : (
               filteredSummaries.map((s) => {
-              const countedVal = counts[s.RM_Code] !== undefined ? counts[s.RM_Code] : s.Ending_Stock.toString();
+              const endingStockVal = typeof s.Ending_Stock === 'number' && !isNaN(s.Ending_Stock) ? s.Ending_Stock : 0;
+              const countedVal = counts[s.RM_Code] !== undefined ? counts[s.RM_Code] : endingStockVal.toString();
               const numCounted = parseFloat(countedVal) || 0;
-              const variance = Number((numCounted - s.Ending_Stock).toFixed(3));
+              const variance = Number((numCounted - endingStockVal).toFixed(3));
               const isExact = Math.abs(variance) < 0.001;
               const isShortage = variance < -0.001;
               const isOverage = variance > 0.001;
@@ -485,10 +490,10 @@ export const PhysicalStockCountModal: React.FC<PhysicalStockCountModalProps> = (
                   {/* Col 2: System Ending Stock */}
                   <div className="col-span-3 text-right font-mono pr-3">
                     <div className="text-xs font-bold text-slate-700">
-                      {s.Ending_Stock.toLocaleString()} {s.Unit}
+                      {endingStockVal.toLocaleString()} {s.Unit}
                     </div>
                     <div className="text-[10px] text-slate-400">
-                      (ยกมา {s.Opening_Stock} + รับ {s.Total_Receive} - ใช้ {s.Actual_Usage})
+                      (ยกมา {s.Opening_Stock ?? 0} + รับ {s.Total_Receive ?? 0} - ใช้ {s.Actual_Usage ?? 0})
                     </div>
                   </div>
 
@@ -510,7 +515,7 @@ export const PhysicalStockCountModal: React.FC<PhysicalStockCountModalProps> = (
                     />
                     <button
                       type="button"
-                      onClick={() => handleCountChange(s.RM_Code, s.Ending_Stock.toString())}
+                      onClick={() => handleCountChange(s.RM_Code, endingStockVal.toString())}
                       className="p-1 rounded bg-slate-100 hover:bg-slate-200 text-[10px] text-slate-600 font-semibold"
                       title="กดยอดตามระบบ"
                     >
