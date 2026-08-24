@@ -82,4 +82,4 @@ export interface MonthlyStockSummary {
 
 export type UserRole = 'staff' | 'admin';
 
-export type ActiveTab = 'dashboard' | 'staff-portal' | 'summary' | 'production' | 'transactions' | 'materials' | 'recipes' | 'formulas';
+export type ActiveTab = 'dashboard' | 'staff-portal' | 'stock-count' | 'summary' | 'production' | 'transactions' | 'materials' | 'recipes' | 'formulas';

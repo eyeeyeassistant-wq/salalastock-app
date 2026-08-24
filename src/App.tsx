@@ -60,7 +60,7 @@ import { NewTransactionModal } from './components/NewTransactionModal';
 import { NewProductionModal } from './components/NewProductionModal';
 import { MaterialDetailModal } from './components/MaterialDetailModal';
 import { OpeningStockModal } from './components/OpeningStockModal';
-import { PhysicalStockCountModal } from './components/PhysicalStockCountModal';
+import { PhysicalStockCountTab } from './components/PhysicalStockCountTab';
 import { ClearDataModal } from './components/ClearDataModal';
 import { PopupBlockedModal } from './components/PopupBlockedModal';
 import { AdminAuthModal } from './components/AdminAuthModal';
@@ -210,7 +210,6 @@ export default function App() {
     index: number;
   } | null>(null);
   const [isOpeningStockModalOpen, setIsOpeningStockModalOpen] = useState(false);
-  const [isStockCountModalOpen, setIsStockCountModalOpen] = useState(false);
   const [isClearDataModalOpen, setIsClearDataModalOpen] = useState(false);
   const [isPopupBlockedModalOpen, setIsPopupBlockedModalOpen] = useState(false);
   const [selectedMaterialDetail, setSelectedMaterialDetail] = useState<string | null>(null);
@@ -1089,12 +1088,25 @@ export default function App() {
               setIsNewTxModalOpen(true);
             }}
             onOpenOpeningStockModal={() => setIsOpeningStockModalOpen(true)}
-            onOpenStockCountModal={() => setIsStockCountModalOpen(true)}
+            onOpenStockCountModal={() => setActiveTab('stock-count')}
             onViewMaterialDetail={(code) => setSelectedMaterialDetail(code)}
             onEditProduction={handleEditProduction}
             onDeleteProduction={handleDeleteProduction}
             onEditTransaction={handleEditTransaction}
             onDeleteTransaction={handleDeleteTransaction}
+          />
+        )}
+
+        {activeTab === 'stock-count' && (
+          <PhysicalStockCountTab
+            materials={materials}
+            recipes={recipes}
+            productions={productions}
+            transactions={transactions}
+            stockCountRecords={stockCountRecords}
+            onSaveStockCount={handleSaveStockCount}
+            onBackToStaffPortal={() => setActiveTab('staff-portal')}
+            onRestoreSampleData={handleRestoreSampleData}
           />
         )}
 
@@ -1107,7 +1119,7 @@ export default function App() {
             transactions={transactions}
             stockCountRecords={stockCountRecords}
             onOpenFormulaGuide={() => setIsFormulaModalOpen(true)}
-            onOpenStockCountModal={() => setIsStockCountModalOpen(true)}
+            onOpenStockCountModal={() => setActiveTab('stock-count')}
             onSelectMaterialDetail={(code) => setSelectedMaterialDetail(code)}
           />
         )}
@@ -1301,17 +1313,6 @@ export default function App() {
         onClose={() => setIsOpeningStockModalOpen(false)}
         materials={materials}
         onSaveOpeningStocks={handleSaveOpeningStocks}
-      />
-
-      <PhysicalStockCountModal
-        isOpen={isStockCountModalOpen}
-        onClose={() => setIsStockCountModalOpen(false)}
-        materials={materials}
-        recipes={recipes}
-        productions={productions}
-        transactions={transactions}
-        onSaveStockCount={handleSaveStockCount}
-        onRestoreSampleData={handleRestoreSampleData}
       />
 
       <MaterialDetailModal

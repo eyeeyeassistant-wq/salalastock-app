@@ -35,7 +35,7 @@ interface StaffPortalTabProps {
   onOpenNewProdModal: () => void;
   onOpenNewTxModal: (type?: 'Receive' | 'Actual Usage') => void;
   onOpenOpeningStockModal: () => void;
-  onOpenStockCountModal: () => void;
+  onOpenStockCountModal?: () => void;
   onViewMaterialDetail: (code: string) => void;
   onEditProduction?: (production: DailyProduction, originalIndex: number) => void;
   onDeleteProduction?: (originalIndex: number) => void;
@@ -116,41 +116,6 @@ export const StaffPortalTab: React.FC<StaffPortalTabProps> = ({
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Special Highlight Banner: End of Month Physical Stock Count */}
-      <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 rounded-2xl p-5 sm:p-6 text-white shadow-md border border-indigo-700/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="flex items-start gap-3.5">
-          <div className="w-12 h-12 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-indigo-200 shrink-0 mt-0.5">
-            <ClipboardCheck className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30 text-xs font-bold mb-1">
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              <span>ภารกิจสิ้นเดือน (End of Month Task)</span>
-            </div>
-            <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-              เช็คสต็อกสิ้นเดือนที่เกิดขึ้นจริง (Physical Stock Count)
-            </h3>
-            <p className="text-xs sm:text-sm text-indigo-200 max-w-2xl mt-1 leading-relaxed">
-              ดึงรายการวัตถุดิบทั้งหมด ({materials.length} รายการ) จาก <b>ทะเบียนวัตถุดิบ</b> เพื่อให้พนักงานกรอกยอดนับจริงปลายเดือน และกดยกยอดไปเป็น <b>สต็อกยกมาต้นเดือนถัดไป (Opening Stock)</b>
-            </p>
-            {latestStockCount && (
-              <div className="text-xs text-indigo-300 mt-2 flex items-center gap-2">
-                <span>บันทึกการนับล่าสุด: ประจำเดือน <b>{latestStockCount.Month}</b> (นับเมื่อ {latestStockCount.Count_Date}) โดย {latestStockCount.Counted_By}</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <button
-          onClick={onOpenStockCountModal}
-          id="btn-staff-stock-count"
-          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold bg-white text-indigo-900 hover:bg-indigo-50 shadow-lg transition-all transform active:scale-95 shrink-0 min-h-[44px]"
-        >
-          <ClipboardCheck className="w-4 h-4 text-indigo-600" />
-          <span>กรอกผลเช็คสต็อกสิ้นเดือน</span>
-        </button>
       </div>
 
       {/* 3 Main Action Cards for Staff */}
