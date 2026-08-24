@@ -42,10 +42,7 @@ export const INITIAL_DAILY_PRODUCTION: DailyProduction[] = [
     Produced_Qty: 50,
     Dispatch_Branch_A: 25,
     Dispatch_Branch_B: 25,
-    Leftover_Branch_A: 2,
-    Leftover_Branch_B: 1,
     Total_Dispatched: 50,
-    Total_Leftover: 3,
   },
   {
     Date: '2026-08-02',
@@ -53,10 +50,7 @@ export const INITIAL_DAILY_PRODUCTION: DailyProduction[] = [
     Produced_Qty: 200,
     Dispatch_Branch_A: 110,
     Dispatch_Branch_B: 90,
-    Leftover_Branch_A: 5,
-    Leftover_Branch_B: 4,
     Total_Dispatched: 200,
-    Total_Leftover: 9,
   },
   {
     Date: '2026-08-03',
@@ -64,10 +58,7 @@ export const INITIAL_DAILY_PRODUCTION: DailyProduction[] = [
     Produced_Qty: 300,
     Dispatch_Branch_A: 160,
     Dispatch_Branch_B: 140,
-    Leftover_Branch_A: 0,
-    Leftover_Branch_B: 0,
     Total_Dispatched: 300,
-    Total_Leftover: 0,
   },
   {
     Date: '2026-08-04',
@@ -75,10 +66,7 @@ export const INITIAL_DAILY_PRODUCTION: DailyProduction[] = [
     Produced_Qty: 40,
     Dispatch_Branch_A: 20,
     Dispatch_Branch_B: 20,
-    Leftover_Branch_A: 1,
-    Leftover_Branch_B: 0,
     Total_Dispatched: 40,
-    Total_Leftover: 1,
   },
   {
     Date: '2026-08-05',
@@ -86,10 +74,7 @@ export const INITIAL_DAILY_PRODUCTION: DailyProduction[] = [
     Produced_Qty: 150,
     Dispatch_Branch_A: 80,
     Dispatch_Branch_B: 70,
-    Leftover_Branch_A: 3,
-    Leftover_Branch_B: 2,
     Total_Dispatched: 150,
-    Total_Leftover: 5,
   },
 ];
 

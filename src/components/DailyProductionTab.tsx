@@ -116,15 +116,12 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
           <div className="flex items-center gap-2">
             <CalendarCheck className="w-4 h-4 text-blue-600 shrink-0" />
             <h2 className="text-sm sm:text-base font-bold text-slate-800">
-              บันทึกการผลิต จัดส่ง และของเหลือรายสาขา (Daily Production)
+              บันทึกการผลิตและยอดจัดส่งสาขา (Daily Production & Dispatch)
             </h2>
           </div>
           <div className="flex items-center gap-3 text-xs text-slate-500 font-medium flex-wrap">
             <span className="flex items-center gap-1">
-              <Truck className="w-3.5 h-3.5 text-blue-600" /> Total_Dispatched (คำนวณอัตโนมัติ)
-            </span>
-            <span className="flex items-center gap-1">
-              <Archive className="w-3.5 h-3.5 text-purple-600" /> Total_Leftover (คำนวณอัตโนมัติ)
+              <Truck className="w-3.5 h-3.5 text-blue-600" /> Total_Dispatched (คำนวณอัตโนมัติ = ส่งสาขา A + ส่งสาขา B)
             </span>
             <span className="sm:hidden text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
               👉 เลื่อนแนวนอนเพื่อดูครบทุกช่อง
@@ -133,22 +130,17 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
         </div>
 
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left text-xs sm:text-sm border-collapse min-w-[700px]">
+          <table className="w-full text-left text-xs sm:text-sm border-collapse min-w-[620px]">
             <thead className="bg-slate-50 text-slate-600 font-semibold uppercase text-[11px] sm:text-xs tracking-wider border-b border-slate-200">
               <tr>
                 <th className="px-4 py-3.5">วันที่ (Date)</th>
                 <th className="px-4 py-3.5">รหัสสินค้า</th>
                 <th className="px-4 py-3.5">ชื่อสินค้า</th>
                 <th className="px-4 py-3.5 text-right text-slate-900 font-bold">ผลิตจริง (Produced)</th>
-                <th className="px-3.5 py-3.5 text-right">ส่งสาขา A</th>
-                <th className="px-3.5 py-3.5 text-right">ส่งสาขา B</th>
-                <th className="px-3.5 py-3.5 text-right">เหลือร้าน A</th>
-                <th className="px-3.5 py-3.5 text-right">เหลือร้าน B</th>
+                <th className="px-4 py-3.5 text-right">ส่งสาขา A</th>
+                <th className="px-4 py-3.5 text-right">ส่งสาขา B</th>
                 <th className="px-4 py-3.5 text-right font-bold text-slate-900 bg-slate-100/70">
                   รวมส่ง (Dispatched)
-                </th>
-                <th className="px-4 py-3.5 text-right font-bold text-slate-900 bg-slate-100/70">
-                  รวมเหลือ (Leftover)
                 </th>
                 <th className="px-4 py-3.5 text-center">จัดการ</th>
               </tr>
@@ -168,23 +160,14 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
                   <td className="px-4 py-3.5 text-right font-mono font-bold text-blue-700 text-xs sm:text-sm bg-blue-50/30">
                     {p.Produced_Qty.toLocaleString()}
                   </td>
-                  <td className="px-3.5 py-3.5 text-right font-mono text-slate-700 text-xs sm:text-sm">
-                    {p.Dispatch_Branch_A.toLocaleString()}
+                  <td className="px-4 py-3.5 text-right font-mono text-slate-700 text-xs sm:text-sm">
+                    {(p.Dispatch_Branch_A || 0).toLocaleString()}
                   </td>
-                  <td className="px-3.5 py-3.5 text-right font-mono text-slate-700 text-xs sm:text-sm">
-                    {p.Dispatch_Branch_B.toLocaleString()}
-                  </td>
-                  <td className="px-3.5 py-3.5 text-right font-mono text-slate-700 text-xs sm:text-sm">
-                    {p.Leftover_Branch_A.toLocaleString()}
-                  </td>
-                  <td className="px-3.5 py-3.5 text-right font-mono text-slate-700 text-xs sm:text-sm">
-                    {p.Leftover_Branch_B.toLocaleString()}
+                  <td className="px-4 py-3.5 text-right font-mono text-slate-700 text-xs sm:text-sm">
+                    {(p.Dispatch_Branch_B || 0).toLocaleString()}
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-900 bg-slate-100/50 text-xs sm:text-sm">
-                    {p.Total_Dispatched.toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-900 bg-slate-100/50 text-xs sm:text-sm">
-                    {p.Total_Leftover.toLocaleString()}
+                    {(p.Total_Dispatched || (p.Dispatch_Branch_A || 0) + (p.Dispatch_Branch_B || 0)).toLocaleString()}
                   </td>
                   <td className="px-4 py-3.5 text-center">
                     <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
@@ -242,18 +225,13 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
             เทคนิค Google Sheets ARRAYFORMULA ใน Tab Daily_Production
           </h4>
           <p className="text-slate-600 leading-relaxed">
-            ใน Google Sheets ไม่จำเป็นต้องลากสูตรลงมาทีละแถว สามารถใส่สูตรไว้ที่ Row 1 ในส่วน Header ได้ทันที:
+            ใน Google Sheets รวมยอดส่งสาขา A + B อัตโนมัติโดยใส่สูตรไว้ที่ Row 1 ในส่วน Header:
           </p>
-          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-            <code className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 font-mono text-[11px] block text-slate-800">
-              <span className="text-blue-600 font-bold">Total_Dispatched:</span>
+          <div className="mt-2">
+            <code className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 font-mono text-[11px] block text-slate-800 max-w-xl">
+              <span className="text-blue-600 font-bold">Total_Dispatched (Row 1):</span>
               <br />
               {`={"Total_Dispatched"; ARRAYFORMULA(IF(A2:A="", "", N(D2:D) + N(E2:E)))}`}
-            </code>
-            <code className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 font-mono text-[11px] block text-slate-800">
-              <span className="text-blue-600 font-bold">Total_Leftover:</span>
-              <br />
-              {`={"Total_Leftover"; ARRAYFORMULA(IF(A2:A="", "", N(F2:F) + N(G2:G)))}`}
             </code>
           </div>
         </div>

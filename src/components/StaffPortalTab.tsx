@@ -153,15 +153,22 @@ export const StaffPortalTab: React.FC<StaffPortalTabProps> = ({
         </button>
       </div>
 
-      {/* 4 Main Action Cards for Staff */}
+      {/* 3 Main Action Cards for Staff */}
       <div>
-        <h3 className="text-xs sm:text-sm font-bold text-slate-600 uppercase tracking-wider mb-3">
-          4 เมนูกรอกข้อมูลประจำวันสำหรับพนักงาน (Daily Entry Actions)
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
-          {/* Card 1: Daily Production */}
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs sm:text-sm font-bold text-slate-700 uppercase tracking-wider">
+            3 เมนูกรอกข้อมูลประจำวันสำหรับพนักงาน (Daily Entry Actions)
+          </h3>
+          <span className="text-xs text-slate-500 font-medium hidden sm:inline">
+            เลือกเมนูที่ต้องการบันทึกข้อมูล
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Card 1: Daily Production & Dispatch */}
           <button
             onClick={onOpenNewProdModal}
+            id="btn-staff-daily-prod"
             className="group text-left bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-blue-500 hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between"
           >
             <div>
@@ -169,47 +176,25 @@ export const StaffPortalTab: React.FC<StaffPortalTabProps> = ({
                 <CalendarCheck className="w-6 h-6" />
               </div>
               <div className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">
-                ขั้นตอนที่ 1
+                การผลิต & ขนส่ง
               </div>
               <h3 className="text-base sm:text-lg font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
-                บันทึกการผลิตประจำวัน
+                บันทึกยอดผลิต & จัดส่งสาขา
               </h3>
               <p className="text-xs sm:text-sm text-slate-500 mt-1 leading-relaxed">
-                กรอกจำนวนผลิตจริง (ชิ้น) ระบบจะตัดสต็อกวัตถุดิบตามสูตร BOM อัตโนมัติ
+                กรอกยอดผลิต (ชิ้น) และกระจายส่งสาขา A / B พร้อมระบบตัดสต็อกตามสูตร BOM อัตโนมัติ (ไม่ต้องกรอกของเหลือแล้ว)
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-1 text-xs sm:text-sm font-bold text-blue-600">
-              <span>+ บันทึกยอดผลิต</span>
+              <Plus className="w-4 h-4" />
+              <span>บันทึกยอดผลิตและจัดส่ง</span>
             </div>
           </button>
 
-          {/* Card 2: Dispatch & Leftovers */}
-          <button
-            onClick={onOpenNewProdModal}
-            className="group text-left bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-indigo-500 hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between"
-          >
-            <div>
-              <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                <Truck className="w-6 h-6" />
-              </div>
-              <div className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-1">
-                ขั้นตอนที่ 2
-              </div>
-              <h3 className="text-base sm:text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
-                ยอดส่งสาขา & ของเหลือ
-              </h3>
-              <p className="text-xs sm:text-sm text-slate-500 mt-1 leading-relaxed">
-                บันทึกยอดกระจายสินค้าไปสาขา A / B และจำนวนสินค้าคงเหลือหน้าร้าน
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-1 text-xs sm:text-sm font-bold text-indigo-600">
-              <span>+ บันทึกยอดจัดส่ง</span>
-            </div>
-          </button>
-
-          {/* Card 3: Material Receive */}
+          {/* Card 2: Material Receive */}
           <button
             onClick={() => onOpenNewTxModal('Receive')}
+            id="btn-staff-receive"
             className="group text-left bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-emerald-500 hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between"
           >
             <div>
@@ -223,17 +208,19 @@ export const StaffPortalTab: React.FC<StaffPortalTabProps> = ({
                 บันทึกรับวัตถุดิบ (Receive)
               </h3>
               <p className="text-xs sm:text-sm text-slate-500 mt-1 leading-relaxed">
-                ลงบันทึกเมื่อมีวัตถุดิบและแพ็กเกจจิ้งส่งตรงมาจากซัพพลายเออร์
+                ลงบันทึกเมื่อมีวัตถุดิบ บรรจุภัณฑ์ หรือสินค้าส่งตรงมาจากซัพพลายเออร์เข้าคลัง
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-1 text-xs sm:text-sm font-bold text-emerald-600">
-              <span>+ บันทึกรับเข้า</span>
+              <Plus className="w-4 h-4" />
+              <span>บันทึกรับวัตถุดิบเข้า</span>
             </div>
           </button>
 
-          {/* Card 4: Material Usage */}
+          {/* Card 3: Material Usage */}
           <button
             onClick={() => onOpenNewTxModal('Actual Usage')}
+            id="btn-staff-usage"
             className="group text-left bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-amber-500 hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between"
           >
             <div>
@@ -247,11 +234,12 @@ export const StaffPortalTab: React.FC<StaffPortalTabProps> = ({
                 เบิกใช้จริง (Actual Usage)
               </h3>
               <p className="text-xs sm:text-sm text-slate-500 mt-1 leading-relaxed">
-                บันทึกการชั่งใช้จริงหน้าเตา หรือเบิกเคสเสีย เพื่อนำไปคิด Variance
+                บันทึกการชั่งใช้จริงหน้าเตา หรือเบิกเคสเสีย เพื่อนำไปเปรียบเทียบผลต่าง Variance
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-1 text-xs sm:text-sm font-bold text-amber-600">
-              <span>+ บันทึกเบิกใช้</span>
+              <Plus className="w-4 h-4" />
+              <span>บันทึกเบิกใช้จริง</span>
             </div>
           </button>
         </div>

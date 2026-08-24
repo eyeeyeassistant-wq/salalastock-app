@@ -486,28 +486,27 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
           </div>
         </div>
 
-        {/* KPI 3: Leftovers & Loss Rate */}
+        {/* KPI 3: Material Usage & Receive */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs relative overflow-hidden">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              ของเหลือสะสม / Loss
+              เบิกใช้วัตถุดิบรวม
             </span>
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${totalLeftover > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
-              <RotateCcw className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+              <Layers className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono">
-              {totalLeftover.toLocaleString()}
+              {totalActualUsageQty.toLocaleString()}
             </span>
-            <span className="text-xs font-semibold text-slate-500">ชิ้น</span>
-            <span className={`text-xs font-bold ml-auto px-2 py-0.5 rounded-md ${leftoverRate > 5 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700'}`}>
-              {leftoverRate.toFixed(1)}% ของยอดส่ง
-            </span>
+            <span className="text-xs font-semibold text-slate-500">หน่วย</span>
           </div>
           <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
-            <span>เหลือ A: {totalLeftoverA} ชิ้น</span>
-            <span>เหลือ B: {totalLeftoverB} ชิ้น</span>
+            <span>รับเข้าคลัง:</span>
+            <span className="font-mono font-bold text-emerald-700">
+              +{totalReceivedQty.toLocaleString()} หน่วย
+            </span>
           </div>
         </div>
 
@@ -618,7 +617,6 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
                           produced: 'ยอดผลิตรวม',
                           dispatchA: 'ส่งสาขา A',
                           dispatchB: 'ส่งสาขา B',
-                          leftover: 'ของเหลือรวม',
                         };
                         return [`${val} ชิ้น`, labels[name] || name];
                       }}
@@ -627,7 +625,6 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
                     <Bar dataKey="produced" name="ยอดผลิตรวม (Produced)" fill="#3B82F6" radius={[4, 4, 0, 0]} />
                     <Bar dataKey="dispatchA" name="ส่งสาขา A" fill="#10B981" radius={[4, 4, 0, 0]} />
                     <Bar dataKey="dispatchB" name="ส่งสาขา B" fill="#6366F1" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="leftover" name="ของเหลือรวม" fill="#F59E0B" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
@@ -638,7 +635,7 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
               )}
             </div>
             <p className="text-xs text-slate-500 italic text-center">
-              * กราฟแสดงยอดผลิตจริงเทียบกับยอดกระจายสินค้าไปสาขา A และสาขา B พร้อมยอดของเหลือในแต่ละวัน
+              * กราฟแสดงยอดผลิตจริงเทียบกับยอดกระจายสินค้าไปสาขา A และสาขา B ในแต่ละวัน
             </p>
           </div>
         )}

@@ -39,7 +39,6 @@ export const FormulaGuideModal: React.FC<FormulaGuideModalProps> = ({
     variance: `=F2 - G2`,
     stockStatus: `=IF(A2="", "", IF(H2 <= XLOOKUP(A2, Master_Materials!$A:$A, Master_Materials!$E:$E, 0), "⚠️ วัตถุดิบใกล้หมด (ต้องสั่งเพิ่ม)", "ปกติ"))`,
     totalDispatchedArray: `={"Total_Dispatched"; ARRAYFORMULA(IF(A2:A="", "", N(D2:D) + N(E2:E)))}`,
-    totalLeftoverArray: `={"Total_Leftover"; ARRAYFORMULA(IF(A2:A="", "", N(F2:F) + N(G2:G)))}`,
     condFormatLowStock: `=$H2 <= XLOOKUP($A2, Master_Materials!$A:$A, Master_Materials!$E:$E, 0)`,
     condFormatVariance: `=$I2 > 0`,
   };
@@ -263,7 +262,7 @@ export const FormulaGuideModal: React.FC<FormulaGuideModalProps> = ({
           <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-900">
-                1. Total_Dispatched (ใส่ที่เซลล์ H1) • ผลรวมจัดส่ง สาขา A + สาขา B อัตโนมัติทั้งคอลัมน์
+                1. Total_Dispatched (ใส่ที่เซลล์ F1) • ผลรวมจัดส่ง สาขา A + สาขา B อัตโนมัติทั้งคอลัมน์
               </span>
               <button
                 onClick={() => copyToClipboard(formulas.totalDispatchedArray, 'dispatchArray')}
@@ -281,33 +280,7 @@ export const FormulaGuideModal: React.FC<FormulaGuideModalProps> = ({
               {formulas.totalDispatchedArray}
             </code>
             <p className="text-[11px] text-slate-500">
-              วางสูตรนี้ที่เซลล์ <strong>H1</strong> จะได้หัวตารางพร้อมคำนวณ <code>Dispatch_A + Dispatch_B</code> ทุกแถวที่กรอกข้อมูล
-            </p>
-          </div>
-
-          {/* Total_Leftover */}
-          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-900">
-                2. Total_Leftover (ใส่ที่เซลล์ I1) • ผลรวมของเหลือ สาขา A + สาขา B อัตโนมัติทั้งคอลัมน์
-              </span>
-              <button
-                onClick={() => copyToClipboard(formulas.totalLeftoverArray, 'leftoverArray')}
-                className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 transition-colors"
-              >
-                {copiedKey === 'leftoverArray' ? (
-                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                ) : (
-                  <Copy className="w-3.5 h-3.5 text-slate-500" />
-                )}
-                <span>{copiedKey === 'leftoverArray' ? 'คัดลอกแล้ว!' : 'คัดลอกสูตร'}</span>
-              </button>
-            </div>
-            <code className="block p-2 bg-slate-900 text-purple-300 font-mono text-xs rounded overflow-x-auto">
-              {formulas.totalLeftoverArray}
-            </code>
-            <p className="text-[11px] text-slate-500">
-              วางสูตรนี้ที่เซลล์ <strong>I1</strong> จะได้หัวตารางพร้อมคำนวณ <code>Leftover_A + Leftover_B</code> ทุกแถวอัตโนมัติ
+              วางสูตรนี้ที่เซลล์ <strong>F1</strong> จะได้หัวตารางพร้อมคำนวณ <code>Dispatch_A + Dispatch_B</code> ทุกแถวที่กรอกข้อมูลอัตโนมัติ
             </p>
           </div>
         </div>

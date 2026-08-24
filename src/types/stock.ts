@@ -22,10 +22,10 @@ export interface DailyProduction {
   Produced_Qty: number;
   Dispatch_Branch_A: number;
   Dispatch_Branch_B: number;
-  Leftover_Branch_A: number;
-  Leftover_Branch_B: number;
-  Total_Dispatched: number; // Formula: Dispatch_A + Dispatch_B
-  Total_Leftover: number; // Formula: Leftover_A + Leftover_B
+  Leftover_Branch_A?: number;
+  Leftover_Branch_B?: number;
+  Total_Dispatched?: number; // Formula: Dispatch_A + Dispatch_B
+  Total_Leftover?: number; // Formula: Leftover_A + Leftover_B
 }
 
 export type TransactionType = 'Receive' | 'Actual Usage';

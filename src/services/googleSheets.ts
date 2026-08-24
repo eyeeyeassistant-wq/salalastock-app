@@ -108,27 +108,22 @@ function syncAllData(ss, data) {
   var prodSheet = getOrCreateSheet(ss, 'Daily_Production');
   prodSheet.clearContents();
   var prodRows = [
-    ['Date', 'Product_Code', 'Produced_Qty', 'Dispatch_Branch_A', 'Dispatch_Branch_B', 'Leftover_Branch_A', 'Leftover_Branch_B', 'Total_Dispatched', 'Total_Leftover']
+    ['Date', 'Product_Code', 'Produced_Qty', 'Dispatch_Branch_A', 'Dispatch_Branch_B', 'Total_Dispatched']
   ];
   productions.forEach(function(p) {
     var dA = Number(p.Dispatch_Branch_A) || 0;
     var dB = Number(p.Dispatch_Branch_B) || 0;
-    var lA = Number(p.Leftover_Branch_A) || 0;
-    var lB = Number(p.Leftover_Branch_B) || 0;
     prodRows.push([
       p.Date,
       p.Product_Code,
       Number(p.Produced_Qty) || 0,
       dA,
       dB,
-      lA,
-      lB,
-      dA + dB,
-      lA + lB
+      dA + dB
     ]);
   });
-  prodSheet.getRange(1, 1, prodRows.length, 9).setValues(prodRows);
-  prodSheet.getRange(1, 1, 1, 9).setBackground('#0f172a').setFontColor('#ffffff').setFontWeight('bold');
+  prodSheet.getRange(1, 1, prodRows.length, 6).setValues(prodRows);
+  prodSheet.getRange(1, 1, 1, 6).setBackground('#0f172a').setFontColor('#ffffff').setFontWeight('bold');
 
   // 4. Stock_Transactions
   var txSheet = getOrCreateSheet(ss, 'Stock_Transactions');
@@ -197,9 +192,7 @@ function appendProductionRow(ss, p) {
   var sheet = getOrCreateSheet(ss, 'Daily_Production');
   var dA = Number(p.Dispatch_Branch_A) || 0;
   var dB = Number(p.Dispatch_Branch_B) || 0;
-  var lA = Number(p.Leftover_Branch_A) || 0;
-  var lB = Number(p.Leftover_Branch_B) || 0;
-  sheet.appendRow([p.Date, p.Product_Code, Number(p.Produced_Qty) || 0, dA, dB, lA, lB, dA + dB, lA + lB]);
+  sheet.appendRow([p.Date, p.Product_Code, Number(p.Produced_Qty) || 0, dA, dB, dA + dB]);
 }
 
 function getOrCreateSheet(ss, name) {
@@ -343,7 +336,6 @@ export async function initializeSheetDataAndFormulas(
 
   // 3. Daily_Production rows with ARRAYFORMULA in header
   // Total_Dispatched: ={"Total_Dispatched"; ARRAYFORMULA(IF(A2:A="", "", N(D2:D) + N(E2:E)))}
-  // Total_Leftover: ={"Total_Leftover"; ARRAYFORMULA(IF(A2:A="", "", N(F2:F) + N(G2:G)))}
   const productionRows = [
     [
       'Date',
@@ -351,10 +343,7 @@ export async function initializeSheetDataAndFormulas(
       'Produced_Qty',
       'Dispatch_Branch_A',
       'Dispatch_Branch_B',
-      'Leftover_Branch_A',
-      'Leftover_Branch_B',
       '={"Total_Dispatched"; ARRAYFORMULA(IF(A2:A="", "", N(D2:D) + N(E2:E)))}',
-      '={"Total_Leftover"; ARRAYFORMULA(IF(A2:A="", "", N(F2:F) + N(G2:G)))}',
     ],
     ...productions.map((p) => [
       p.Date,
@@ -362,9 +351,6 @@ export async function initializeSheetDataAndFormulas(
       p.Produced_Qty,
       p.Dispatch_Branch_A,
       p.Dispatch_Branch_B,
-      p.Leftover_Branch_A,
-      p.Leftover_Branch_B,
-      '', // calculated by ARRAYFORMULA
       '', // calculated by ARRAYFORMULA
     ]),
   ];
