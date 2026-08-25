@@ -37,6 +37,12 @@ function doPost(e) {
     var action = payload.action || 'syncAll';
     var ss = SpreadsheetApp.getActiveSpreadsheet();
 
+    if (action === 'test' || action === 'ping') {
+      return ContentService.createTextOutput(
+        JSON.stringify({ status: 'success', message: 'Google Sheets Connected Successfully!', timestamp: new Date().toISOString() })
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (action === 'syncAll' || action === 'init') {
       syncAllData(ss, payload.data || payload);
       return ContentService.createTextOutput(
@@ -150,13 +156,13 @@ function syncAllData(ss, data) {
       m.RM_Code,
       m.RM_Name,
       m.Unit,
-      '=IFERROR(XLOOKUP(A' + r + ', Master_Materials!$A:$A, Master_Materials!$D:$D, 0), 0)',
+      '=IFERROR(VLOOKUP(A' + r + ', Master_Materials!$A:$E, 4, FALSE), 0)',
       '=IFERROR(SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A' + r + ', Stock_Transactions!$B:$B, "Receive"), 0)',
       '=IFERROR(SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A' + r + ', Stock_Transactions!$B:$B, "Actual Usage"), 0)',
       '=IFERROR(SUMPRODUCT(SUMIFS(Daily_Production!$C:$C, Daily_Production!$B:$B, FILTER(BOM_Recipe!$A:$A, BOM_Recipe!$C:$C = A' + r + ')), FILTER(BOM_Recipe!$D:$D, BOM_Recipe!$C:$C = A' + r + ')), 0)',
       '=D' + r + ' + E' + r + ' - F' + r,
       '=F' + r + ' - G' + r,
-      '=IF(A' + r + '="", "", IF(H' + r + ' <= IFERROR(XLOOKUP(A' + r + ', Master_Materials!$A:$A, Master_Materials!$E:$E, 0), 0), "⚠️ ใกล้หมด", "ปกติ"))'
+      '=IF(A' + r + '="", "", IF(H' + r + ' <= IFERROR(VLOOKUP(A' + r + ', Master_Materials!$A:$E, 5, FALSE), 0), "⚠️ ใกล้หมด", "ปกติ"))'
     ]);
   });
   sumSheet.getRange(1, 1, sumRows.length, 10).setValues(sumRows);
@@ -211,7 +217,7 @@ function getOrCreateSheet(ss, name) {
 export async function syncViaWebhook(
   webhookUrl: string,
   payload: SyncPayload,
-  action: 'syncAll' | 'appendTransaction' | 'appendProduction' = 'syncAll'
+  action: 'syncAll' | 'appendTransaction' | 'appendProduction' | 'test' = 'syncAll'
 ): Promise<boolean> {
   if (!webhookUrl || !webhookUrl.startsWith('http')) {
     throw new Error('กรุณาระบุ URL ของ Google Apps Script Web App ให้ถูกต้อง');
@@ -237,6 +243,13 @@ export async function syncViaWebhook(
     console.error('Error syncing via webhook:', err);
     throw new Error(`ไม่สามารถเชื่อมต่อ Google Webhook: ${err.message}`);
   }
+}
+
+export async function testWebhookConnection(webhookUrl: string): Promise<boolean> {
+  if (!webhookUrl || !webhookUrl.startsWith('http')) {
+    throw new Error('กรุณาระบุ URL ของ Google Apps Script Web App ให้ถูกต้อง');
+  }
+  return syncViaWebhook(webhookUrl, { materials: [], recipes: [], productions: [], transactions: [] }, 'test');
 }
 
 

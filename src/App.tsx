@@ -83,27 +83,66 @@ export default function App() {
   // Core Data State (Saved to Cloud Firestore & localStorage)
   const [materials, setMaterials] = useState<MasterMaterial[]>(() => {
     const saved = localStorage.getItem('stock_materials');
-    return saved ? JSON.parse(saved) : INITIAL_MATERIALS;
+    const initialized = localStorage.getItem('stock_data_initialized');
+    if (saved !== null) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return initialized === 'true' ? [] : INITIAL_MATERIALS;
+      }
+    }
+    return initialized === 'true' ? [] : INITIAL_MATERIALS;
   });
 
   const [recipes, setRecipes] = useState<BOMRecipe[]>(() => {
     const saved = localStorage.getItem('stock_recipes');
-    return saved ? JSON.parse(saved) : INITIAL_RECIPES;
+    const initialized = localStorage.getItem('stock_data_initialized');
+    if (saved !== null) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return initialized === 'true' ? [] : INITIAL_RECIPES;
+      }
+    }
+    return initialized === 'true' ? [] : INITIAL_RECIPES;
   });
 
   const [productions, setProductions] = useState<DailyProduction[]>(() => {
     const saved = localStorage.getItem('stock_productions');
-    return saved ? JSON.parse(saved) : INITIAL_DAILY_PRODUCTION;
+    const initialized = localStorage.getItem('stock_data_initialized');
+    if (saved !== null) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return initialized === 'true' ? [] : INITIAL_DAILY_PRODUCTION;
+      }
+    }
+    return initialized === 'true' ? [] : INITIAL_DAILY_PRODUCTION;
   });
 
   const [transactions, setTransactions] = useState<StockTransaction[]>(() => {
     const saved = localStorage.getItem('stock_transactions');
-    return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
+    const initialized = localStorage.getItem('stock_data_initialized');
+    if (saved !== null) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return initialized === 'true' ? [] : INITIAL_TRANSACTIONS;
+      }
+    }
+    return initialized === 'true' ? [] : INITIAL_TRANSACTIONS;
   });
 
   const [stockCountRecords, setStockCountRecords] = useState<MonthlyStockCountRecord[]>(() => {
     const saved = localStorage.getItem('stock_count_records');
-    return saved ? JSON.parse(saved) : [];
+    if (saved !== null) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
   });
 
   // Auth & Google Sheets State
@@ -259,25 +298,27 @@ export default function App() {
     let nextMats = materials;
     let nextRecipes = recipes;
 
+    localStorage.setItem('stock_data_initialized', 'true');
+
     if (options.clearTransactions) {
       nextTxs = [];
       setTransactions([]);
-      localStorage.removeItem('stock_transactions');
+      localStorage.setItem('stock_transactions', JSON.stringify([]));
     }
     if (options.clearProductions) {
       nextProds = [];
       setProductions([]);
-      localStorage.removeItem('stock_productions');
+      localStorage.setItem('stock_productions', JSON.stringify([]));
     }
     if (options.clearMaterials) {
       nextMats = [];
       setMaterials([]);
-      localStorage.removeItem('stock_materials');
+      localStorage.setItem('stock_materials', JSON.stringify([]));
     }
     if (options.clearRecipes) {
       nextRecipes = [];
       setRecipes([]);
-      localStorage.removeItem('stock_recipes');
+      localStorage.setItem('stock_recipes', JSON.stringify([]));
     }
     showNotification('🗑️ เคลียร์ข้อมูลที่เลือกเรียบร้อยแล้ว พร้อมกรอกข้อมูลจริง');
     triggerAutoSync({
@@ -294,12 +335,60 @@ export default function App() {
     setRecipes(INITIAL_RECIPES);
     setProductions(INITIAL_DAILY_PRODUCTION);
     setTransactions(INITIAL_TRANSACTIONS);
-    showNotification('✨ โหลดข้อมูลตัวอย่างกลับมาเรียบร้อยแล้ว');
+    localStorage.setItem('stock_materials', JSON.stringify(INITIAL_MATERIALS));
+    localStorage.setItem('stock_recipes', JSON.stringify(INITIAL_RECIPES));
+    localStorage.setItem('stock_productions', JSON.stringify(INITIAL_DAILY_PRODUCTION));
+    localStorage.setItem('stock_transactions', JSON.stringify(INITIAL_TRANSACTIONS));
+    localStorage.setItem('stock_data_initialized', 'true');
+    showNotification('✨ โหลดข้อมูลตัวอย่างเดิมกลับมาเรียบร้อยแล้ว');
     triggerAutoSync({
       materials: INITIAL_MATERIALS,
       recipes: INITIAL_RECIPES,
       productions: INITIAL_DAILY_PRODUCTION,
       transactions: INITIAL_TRANSACTIONS,
+    });
+  };
+
+  // Import Excel / Sheets Data
+  const handleImportExcelData = (imported: Partial<{
+    materials: MasterMaterial[];
+    recipes: BOMRecipe[];
+    productions: DailyProduction[];
+    transactions: StockTransaction[];
+  }>) => {
+    let nextMats = materials;
+    let nextRecipes = recipes;
+    let nextProds = productions;
+    let nextTxs = transactions;
+
+    if (imported.materials && imported.materials.length > 0) {
+      nextMats = imported.materials;
+      setMaterials(nextMats);
+      localStorage.setItem('stock_materials', JSON.stringify(nextMats));
+    }
+    if (imported.recipes && imported.recipes.length > 0) {
+      nextRecipes = imported.recipes;
+      setRecipes(nextRecipes);
+      localStorage.setItem('stock_recipes', JSON.stringify(nextRecipes));
+    }
+    if (imported.productions && imported.productions.length > 0) {
+      nextProds = imported.productions;
+      setProductions(nextProds);
+      localStorage.setItem('stock_productions', JSON.stringify(nextProds));
+    }
+    if (imported.transactions && imported.transactions.length > 0) {
+      nextTxs = imported.transactions;
+      setTransactions(nextTxs);
+      localStorage.setItem('stock_transactions', JSON.stringify(nextTxs));
+    }
+
+    localStorage.setItem('stock_data_initialized', 'true');
+    showNotification('✨ นำเข้าข้อมูลและบันทึกสู่ระบบถาวรเรียบร้อยแล้ว!');
+    triggerAutoSync({
+      materials: nextMats,
+      recipes: nextRecipes,
+      productions: nextProds,
+      transactions: nextTxs,
     });
   };
 
@@ -382,26 +471,27 @@ export default function App() {
         if (!isSubscribed) return;
 
         if (cloudData && cloudData.isInitialized) {
-          if (cloudData.materials && cloudData.materials.length > 0) {
+          if (cloudData.materials !== undefined) {
             setMaterials(cloudData.materials);
             localStorage.setItem('stock_materials', JSON.stringify(cloudData.materials));
           }
-          if (cloudData.recipes && cloudData.recipes.length > 0) {
+          if (cloudData.recipes !== undefined) {
             setRecipes(cloudData.recipes);
             localStorage.setItem('stock_recipes', JSON.stringify(cloudData.recipes));
           }
-          if (cloudData.productions) {
+          if (cloudData.productions !== undefined) {
             setProductions(cloudData.productions);
             localStorage.setItem('stock_productions', JSON.stringify(cloudData.productions));
           }
-          if (cloudData.transactions) {
+          if (cloudData.transactions !== undefined) {
             setTransactions(cloudData.transactions);
             localStorage.setItem('stock_transactions', JSON.stringify(cloudData.transactions));
           }
-          if (cloudData.stockCountRecords) {
+          if (cloudData.stockCountRecords !== undefined) {
             setStockCountRecords(cloudData.stockCountRecords);
             localStorage.setItem('stock_count_records', JSON.stringify(cloudData.stockCountRecords));
           }
+          localStorage.setItem('stock_data_initialized', 'true');
         } else {
           // Cloud database is empty (first boot), seed with baseline dataset
           saveCloudDataDebounced({
@@ -412,6 +502,7 @@ export default function App() {
             stockCountRecords,
             isInitialized: true,
           }, 0);
+          localStorage.setItem('stock_data_initialized', 'true');
         }
 
         if (cloudSettings) {
@@ -1276,6 +1367,12 @@ export default function App() {
         onLinkExistingSheet={handleLinkExistingSheet}
         onPushAllToSheet={handlePushAllToSheet}
         onDisconnectSheet={handleDisconnectSheet}
+        materials={materials}
+        recipes={recipes}
+        productions={productions}
+        transactions={transactions}
+        stockCountRecords={stockCountRecords}
+        onImportExcelData={handleImportExcelData}
       />
 
       <FormulaGuideModal

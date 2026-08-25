@@ -15,10 +15,20 @@ import {
   Copy,
   Check,
   Zap,
-  HelpCircle,
+  Download,
+  Upload,
+  RefreshCw,
 } from 'lucide-react';
 import { User } from 'firebase/auth';
-import { GOOGLE_APPS_SCRIPT_CODE } from '../services/googleSheets';
+import { GOOGLE_APPS_SCRIPT_CODE, testWebhookConnection } from '../services/googleSheets';
+import { exportFullDataToExcel, parseExcelImport } from '../services/excelExport';
+import {
+  MasterMaterial,
+  BOMRecipe,
+  DailyProduction,
+  StockTransaction,
+  MonthlyStockCountRecord,
+} from '../types/stock';
 
 interface GoogleSheetsSyncModalProps {
   isOpen: boolean;
@@ -36,6 +46,17 @@ interface GoogleSheetsSyncModalProps {
   onLinkExistingSheet: (sheetId: string) => Promise<void>;
   onPushAllToSheet: () => Promise<void>;
   onDisconnectSheet: () => void;
+  materials: MasterMaterial[];
+  recipes: BOMRecipe[];
+  productions: DailyProduction[];
+  transactions: StockTransaction[];
+  stockCountRecords: MonthlyStockCountRecord[];
+  onImportExcelData: (data: {
+    materials?: MasterMaterial[];
+    recipes?: BOMRecipe[];
+    productions?: DailyProduction[];
+    transactions?: StockTransaction[];
+  }) => void;
 }
 
 export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
@@ -54,12 +75,20 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
   onLinkExistingSheet,
   onPushAllToSheet,
   onDisconnectSheet,
+  materials,
+  recipes,
+  productions,
+  transactions,
+  stockCountRecords,
+  onImportExcelData,
 }) => {
-  const [activeTab, setActiveTab] = useState<'oauth' | 'webhook'>('oauth');
+  const [activeTab, setActiveTab] = useState<'webhook' | 'oauth' | 'excel'>('webhook');
   const [webhookInput, setWebhookInput] = useState(webhookUrl || '');
   const [existingIdInput, setExistingIdInput] = useState('');
   const [activeOAuthMode, setActiveOAuthMode] = useState<'create' | 'link'>('create');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isTestingWebhook, setIsTestingWebhook] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showScriptCode, setShowScriptCode] = useState(false);
 
@@ -77,9 +106,28 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
     setTimeout(() => setCopied(false), 2500);
   };
 
+  const handleTestWebhook = async () => {
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    if (!webhookInput.trim()) {
+      setErrorMsg('กรุณากรอก URL ของ Google Apps Script ก่อนทดสอบ');
+      return;
+    }
+    setIsTestingWebhook(true);
+    try {
+      await testWebhookConnection(webhookInput.trim());
+      setSuccessMsg('✅ ส่งคำขอทดสอบไปยัง Google Apps Script สำเร็จแล้ว!');
+    } catch (err: any) {
+      setErrorMsg(`⚠️ ทดสอบไม่สำเร็จ: ${err.message || 'กรุณาตรวจสอบ URL'}`);
+    } finally {
+      setIsTestingWebhook(false);
+    }
+  };
+
   const handleWebhookSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+    setSuccessMsg(null);
     if (!webhookInput.trim()) {
       setErrorMsg('กรุณาระบุ URL ของ Google Apps Script Web App');
       return;
@@ -95,6 +143,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
   const handleLinkSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+    setSuccessMsg(null);
     if (!existingIdInput.trim()) return;
 
     let parsedId = existingIdInput.trim();
@@ -113,11 +162,35 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
 
   const handleCreateSubmit = async () => {
     setErrorMsg(null);
+    setSuccessMsg(null);
     try {
       await onCreateNewSheet();
       onClose();
     } catch (err: any) {
       setErrorMsg(err.message || 'เกิดข้อผิดพลาดในการสร้าง Sheet');
+    }
+  };
+
+  const handleExportExcel = () => {
+    exportFullDataToExcel({
+      materials,
+      recipes,
+      productions,
+      transactions,
+      stockCountRecords,
+    }, `Stock_Tracking_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    setSuccessMsg('📥 ดาวน์โหลดไฟล์ Excel (.xlsx) ครบทุกแท็บเรียบร้อยแล้ว!');
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const parsed = await parseExcelImport(file);
+      onImportExcelData(parsed);
+      setSuccessMsg('✨ นำเข้าข้อมูลจากไฟล์ Excel สำเร็จเรียบร้อยแล้ว!');
+    } catch (err: any) {
+      setErrorMsg(`เกิดข้อผิดพลาดในการอ่านไฟล์: ${err.message}`);
     }
   };
 
@@ -151,7 +224,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
               )}
             </div>
             <p className="text-xs text-slate-500">
-              ทั้งพนักงาน (Staff) และแอดมิน (Admin) กรอกหรือแก้ไขข้อมูล ระบบจะอัปเดตเข้า Google Sheet ทันที
+              ทุกการบันทึก เบิก รับ และตรวจนับสต็อกจะอัปเดตเข้า Google Sheet อัตโนมัติ พร้อมบันทึกบนคลาวด์ถาวร
             </p>
           </div>
         </div>
@@ -160,6 +233,13 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
           <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{errorMsg}</span>
+          </div>
+        )}
+
+        {successMsg && (
+          <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+            <span>{successMsg}</span>
           </div>
         )}
 
@@ -252,7 +332,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
             }`}
           >
             <Zap className="w-4 h-4 text-emerald-600" />
-            <span>วิธีที่ 1: Google Apps Script Webhook (แนะนำสำหรับทีม/พนักงานหลายคน)</span>
+            <span>วิธีที่ 1: Google Apps Script Webhook (แนะนำที่สุด)</span>
           </button>
           <button
             type="button"
@@ -264,7 +344,19 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
             }`}
           >
             <FileSpreadsheet className="w-4 h-4 text-blue-600" />
-            <span>วิธีที่ 2: ล็อกอินด้วย Google Account (OAuth)</span>
+            <span>วิธีที่ 2: Google OAuth</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('excel')}
+            className={`flex-1 py-2 rounded-lg text-center transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === 'excel'
+                ? 'bg-white text-slate-900 shadow-xs font-bold'
+                : 'hover:text-slate-900'
+            }`}
+          >
+            <Download className="w-4 h-4 text-purple-600" />
+            <span>สำรอง/โหลดไฟล์ Excel</span>
           </button>
         </div>
 
@@ -333,7 +425,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                 <label className="block text-xs font-bold text-slate-800 mb-1">
                   วาง Web App URL ของ Google Apps Script:
                 </label>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <input
                     type="url"
                     required
@@ -342,13 +434,24 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                     onChange={(e) => setWebhookInput(e.target.value)}
                     className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
                   />
-                  <button
-                    type="submit"
-                    disabled={isSyncing}
-                    className="px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white shadow-xs transition-colors whitespace-nowrap"
-                  >
-                    {isSyncing ? 'กำลังบันทึก...' : 'บันทึก & ซิงค์ทันที'}
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleTestWebhook}
+                      disabled={isTestingWebhook}
+                      className="px-3 py-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition-colors whitespace-nowrap flex items-center gap-1"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isTestingWebhook ? 'animate-spin' : ''}`} />
+                      <span>{isTestingWebhook ? 'กำลังทดสอบ...' : 'ทดสอบ'}</span>
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSyncing}
+                      className="px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors whitespace-nowrap"
+                    >
+                      {isSyncing ? 'กำลังบันทึก...' : 'บันทึก & ซิงค์ทันที'}
+                    </button>
+                  </div>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1.5 flex items-center gap-1">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
@@ -442,7 +545,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                       activeOAuthMode === 'create' ? 'bg-white text-slate-900 shadow-xs font-bold' : ''
                     }`}
                   >
-                    1. สร้าง Google Sheet ใหม่ใน Drive ของคุณ (คลิกเดียวจบ)
+                    1. สร้าง Google Sheet ใหม่ใน Drive ของคุณ
                   </button>
                   <button
                     type="button"
@@ -462,7 +565,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                       <span>สร้างไฟล์ใหม่และส่งข้อมูลบนหน้าจอขึ้นไปทันที</span>
                     </div>
                     <ul className="text-xs text-slate-600 space-y-1.5 list-disc list-inside">
-                      <li>สร้าง 5 แท็บ: Master_Materials, BOM_Recipe, Daily_Production, Stock_Transactions, Monthly_Stock_Summary</li>
+                      <li>สร้าง 6 แท็บ: Master_Materials, BOM_Recipe, Daily_Production, Stock_Transactions, Monthly_Stock_Summary, Monthly_Stock_Count</li>
                       <li>ใส่สูตรคำนวณ Variance, ยอดตัดสต็อก, และสถานะอัตโนมัติ</li>
                     </ul>
 
@@ -503,6 +606,51 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* TAB 3: EXCEL BACKUP & IMPORT */}
+        {activeTab === 'excel' && (
+          <div className="space-y-4">
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 mb-1 flex items-center gap-1.5">
+                  <Download className="w-4 h-4 text-purple-600" />
+                  <span>1. ดาวน์โหลดไฟล์สำรอง Excel (.xlsx)</span>
+                </h4>
+                <p className="text-xs text-slate-600 mb-3">
+                  ดาวน์โหลดข้อมูลทั้งหมด (วัตถุดิบ, สูตร, ประวัติการผลิต, รายการสต็อก, และยอดตรวจนับ) เป็นไฟล์ Excel แยกแท็บเรียบร้อย
+                </p>
+                <button
+                  type="button"
+                  onClick={handleExportExcel}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>ดาวน์โหลดไฟล์ Excel (.xlsx) ทันที</span>
+                </button>
+              </div>
+
+              <div className="pt-4 border-t border-slate-200">
+                <h4 className="text-xs font-bold text-slate-900 mb-1 flex items-center gap-1.5">
+                  <Upload className="w-4 h-4 text-blue-600" />
+                  <span>2. นำเข้าข้อมูลจากไฟล์ Excel (.xlsx)</span>
+                </h4>
+                <p className="text-xs text-slate-600 mb-3">
+                  อัปโหลดไฟล์ Excel (.xlsx) เพื่อนำข้อมูลวัตถุดิบ สูตร หรือประวัติการผลิตเข้าสู่ระบบโดยอัตโนมัติ
+                </p>
+                <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer">
+                  <Upload className="w-4 h-4" />
+                  <span>เลือกไฟล์ Excel (.xlsx) เพื่อนำเข้า</span>
+                  <input
+                    type="file"
+                    accept=".xlsx, .xls, .csv"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
           </div>
         )}
       </div>
