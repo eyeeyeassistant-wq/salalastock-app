@@ -48,10 +48,37 @@ export const MasterMaterialsTab: React.FC<MasterMaterialsTabProps> = ({
     e.preventDefault();
     if (!newRMCode || !newRMName) return;
 
+    const trimmedCode = newRMCode.toUpperCase().trim();
+    const existing = materials.find(
+      (m) => m.RM_Code && m.RM_Code.toUpperCase().trim() === trimmedCode
+    );
+
+    if (existing) {
+      if (
+        confirm(
+          `รหัสวัตถุดิบ "${trimmedCode}" มีอยู่ในระบบแล้ว (${existing.RM_Name}) คุณต้องการอัปเดตข้อมูลเดิมใช่หรือไม่?`
+        )
+      ) {
+        onUpdateMaterial({
+          RM_Code: trimmedCode,
+          RM_Name: newRMName.trim(),
+          Unit: newUnit.trim() || 'kg',
+          Opening_Stock: Number(newOpening) || 0,
+          Safety_Stock: Number(newSafety) || 0,
+        });
+        setNewRMCode('');
+        setNewRMName('');
+        setNewOpening(0);
+        setNewSafety(10);
+        setIsAdding(false);
+      }
+      return;
+    }
+
     onAddMaterial({
-      RM_Code: newRMCode.toUpperCase().trim(),
+      RM_Code: trimmedCode,
       RM_Name: newRMName.trim(),
-      Unit: newUnit.trim(),
+      Unit: newUnit.trim() || 'kg',
       Opening_Stock: Number(newOpening) || 0,
       Safety_Stock: Number(newSafety) || 0,
     });

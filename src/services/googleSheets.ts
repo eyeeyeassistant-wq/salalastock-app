@@ -101,12 +101,15 @@ function readAllData(ss) {
   var matSheet = ss.getSheetByName('Master_Materials');
   if (matSheet && matSheet.getLastRow() > 1) {
     var matVals = matSheet.getRange(2, 1, matSheet.getLastRow() - 1, 5).getValues();
+    var matSeen = {};
     matVals.forEach(function(row) {
-      if (row[0]) {
+      var code = String(row[0] || '').trim().toUpperCase();
+      if (code && !matSeen[code]) {
+        matSeen[code] = true;
         result.materials.push({
-          RM_Code: String(row[0]),
-          RM_Name: String(row[1] || ''),
-          Unit: String(row[2] || 'kg'),
+          RM_Code: code,
+          RM_Name: String(row[1] || '').trim(),
+          Unit: String(row[2] || 'kg').trim(),
           Opening_Stock: Number(row[3]) || 0,
           Safety_Stock: Number(row[4]) || 0
         });
@@ -118,12 +121,17 @@ function readAllData(ss) {
   var bomSheet = ss.getSheetByName('BOM_Recipe');
   if (bomSheet && bomSheet.getLastRow() > 1) {
     var bomVals = bomSheet.getRange(2, 1, bomSheet.getLastRow() - 1, 4).getValues();
+    var bomSeen = {};
     bomVals.forEach(function(row) {
-      if (row[0] && row[2]) {
+      var pCode = String(row[0] || '').trim().toUpperCase();
+      var rmCode = String(row[2] || '').trim().toUpperCase();
+      var key = pCode + '___' + rmCode;
+      if (pCode && rmCode && !bomSeen[key]) {
+        bomSeen[key] = true;
         result.recipes.push({
-          Product_Code: String(row[0]),
-          Product_Name: String(row[1] || ''),
-          RM_Code: String(row[2]),
+          Product_Code: pCode,
+          Product_Name: String(row[1] || '').trim(),
+          RM_Code: rmCode,
           Standard_Qty: Number(row[3]) || 0
         });
       }

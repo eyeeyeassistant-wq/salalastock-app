@@ -155,7 +155,18 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   };
 
-  const tabItems = [
+  interface TabItem {
+    id: ActiveTab;
+    name: string;
+    sub: string;
+    icon: any;
+    color: string;
+    badge?: string | null;
+    badgeColor?: string;
+    adminOnly: boolean;
+  }
+
+  const tabItems: TabItem[] = [
     {
       id: 'staff-portal' as ActiveTab,
       name: 'พอร์ทัลพนักงาน',
@@ -207,8 +218,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       sub: 'Variance Analysis',
       icon: Layers,
       color: 'text-indigo-400',
-      badge: lowStockCount > 0 ? `${lowStockCount} เตือน` : null,
-      badgeColor: 'bg-rose-500 text-white',
+      badge: null,
       adminOnly: false,
     },
     ...(userRole === 'admin'

@@ -20,6 +20,8 @@ import {
 import {
   generateMonthlySummary,
   calculateProductionRowTotals,
+  sanitizeMaterials,
+  sanitizeRecipes,
 } from './utils/calculations';
 import {
   initAuth,
@@ -91,7 +93,10 @@ export default function App() {
     const saved = localStorage.getItem('stock_materials');
     if (saved !== null) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return sanitizeMaterials(parsed);
+        }
       } catch (e) {
         return [];
       }
@@ -103,7 +108,10 @@ export default function App() {
     const saved = localStorage.getItem('stock_recipes');
     if (saved !== null) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return sanitizeRecipes(parsed);
+        }
       } catch (e) {
         return [];
       }
@@ -524,11 +532,11 @@ export default function App() {
                 (sheetData.transactions && sheetData.transactions.length > 0))
             ) {
               if (sheetData.materials && sheetData.materials.length > 0) {
-                loadedMats = sheetData.materials;
+                loadedMats = sanitizeMaterials(sheetData.materials);
                 setMaterials(loadedMats);
               }
               if (sheetData.recipes && sheetData.recipes.length > 0) {
-                loadedRecipes = sheetData.recipes;
+                loadedRecipes = sanitizeRecipes(sheetData.recipes);
                 setRecipes(loadedRecipes);
               }
               if (sheetData.productions && sheetData.productions.length > 0) {
@@ -560,8 +568,8 @@ export default function App() {
             (cloudData.recipes && cloudData.recipes.length > 0);
 
           if (hasCloudItems) {
-            loadedMats = cloudData.materials || [];
-            loadedRecipes = cloudData.recipes || [];
+            loadedMats = sanitizeMaterials(cloudData.materials || []);
+            loadedRecipes = sanitizeRecipes(cloudData.recipes || []);
             loadedProds = cloudData.productions || [];
             loadedTxs = cloudData.transactions || [];
             loadedCounts = cloudData.stockCountRecords || [];
@@ -587,16 +595,16 @@ export default function App() {
               if (localMats) {
                 const parsed = JSON.parse(localMats);
                 if (Array.isArray(parsed) && parsed.length > 0) {
-                  loadedMats = parsed;
-                  setMaterials(parsed);
+                  loadedMats = sanitizeMaterials(parsed);
+                  setMaterials(loadedMats);
                   hasData = true;
                 }
               }
               if (localRecipes) {
                 const parsed = JSON.parse(localRecipes);
                 if (Array.isArray(parsed) && parsed.length > 0) {
-                  loadedRecipes = parsed;
-                  setRecipes(parsed);
+                  loadedRecipes = sanitizeRecipes(parsed);
+                  setRecipes(loadedRecipes);
                 }
               }
               if (localTxs) {
@@ -1065,12 +1073,14 @@ export default function App() {
         const sheetData = await fetchDataFromGoogleSheet(targetWebhook);
         if (sheetData) {
           if (sheetData.materials && sheetData.materials.length > 0) {
-            setMaterials(sheetData.materials);
-            importedCount += sheetData.materials.length;
+            const clean = sanitizeMaterials(sheetData.materials);
+            setMaterials(clean);
+            importedCount += clean.length;
           }
           if (sheetData.recipes && sheetData.recipes.length > 0) {
-            setRecipes(sheetData.recipes);
-            importedCount += sheetData.recipes.length;
+            const clean = sanitizeRecipes(sheetData.recipes);
+            setRecipes(clean);
+            importedCount += clean.length;
           }
           if (sheetData.productions && sheetData.productions.length > 0) {
             setProductions(sheetData.productions);
@@ -1100,12 +1110,14 @@ export default function App() {
           const sheetData = await fetchAllSheetData(currentToken, currentSheetId);
           if (sheetData) {
             if (sheetData.materials && sheetData.materials.length > 0) {
-              setMaterials(sheetData.materials);
-              importedCount += sheetData.materials.length;
+              const clean = sanitizeMaterials(sheetData.materials);
+              setMaterials(clean);
+              importedCount += clean.length;
             }
             if (sheetData.recipes && sheetData.recipes.length > 0) {
-              setRecipes(sheetData.recipes);
-              importedCount += sheetData.recipes.length;
+              const clean = sanitizeRecipes(sheetData.recipes);
+              setRecipes(clean);
+              importedCount += clean.length;
             }
             if (sheetData.productions && sheetData.productions.length > 0) {
               setProductions(sheetData.productions);
@@ -1160,15 +1172,30 @@ export default function App() {
 
   // 1. Add Material
   const handleAddMaterial = (mat: MasterMaterial) => {
-    const nextMats = [...materials, mat];
+    const code = mat.RM_Code.trim().toUpperCase();
+    const sanitizedMat = { ...mat, RM_Code: code };
+    let nextMats: MasterMaterial[];
+    if (materials.some((m) => m.RM_Code.trim().toUpperCase() === code)) {
+      nextMats = materials.map((m) =>
+        m.RM_Code.trim().toUpperCase() === code ? sanitizedMat : m
+      );
+      showNotification(`อัปเดตข้อมูลวัตถุดิบ ${mat.RM_Name} (${code}) เรียบร้อยแล้ว`);
+    } else {
+      nextMats = [...materials, sanitizedMat];
+      showNotification(`เพิ่มวัตถุดิบ ${mat.RM_Name} (${code}) เรียบร้อยแล้ว`);
+    }
+    nextMats = sanitizeMaterials(nextMats);
     setMaterials(nextMats);
-    showNotification(`เพิ่มวัตถุดิบ ${mat.RM_Name} เรียบร้อยแล้ว`);
     triggerAutoSync({ materials: nextMats });
   };
 
   // 2. Update Material
   const handleUpdateMaterial = (mat: MasterMaterial) => {
-    const nextMats = materials.map((item) => (item.RM_Code === mat.RM_Code ? mat : item));
+    const code = mat.RM_Code.trim().toUpperCase();
+    const sanitizedMat = { ...mat, RM_Code: code };
+    const nextMats = sanitizeMaterials(
+      materials.map((item) => (item.RM_Code.trim().toUpperCase() === code ? sanitizedMat : item))
+    );
     setMaterials(nextMats);
     showNotification(`อัปเดตข้อมูล ${mat.RM_Name} สำเร็จ`);
     triggerAutoSync({ materials: nextMats });
@@ -1176,9 +1203,25 @@ export default function App() {
 
   // 3. Add Recipe Item
   const handleAddRecipe = (recipe: BOMRecipe) => {
-    const nextRecipes = [...recipes, recipe];
+    const pCode = recipe.Product_Code.trim().toUpperCase();
+    const rmCode = recipe.RM_Code.trim().toUpperCase();
+    const sanitizedRecipe = { ...recipe, Product_Code: pCode, RM_Code: rmCode };
+    let nextRecipes: BOMRecipe[];
+    const exists = recipes.some(
+      (r) => r.Product_Code.trim().toUpperCase() === pCode && r.RM_Code.trim().toUpperCase() === rmCode
+    );
+    if (exists) {
+      nextRecipes = recipes.map((r) =>
+        r.Product_Code.trim().toUpperCase() === pCode && r.RM_Code.trim().toUpperCase() === rmCode
+          ? sanitizedRecipe
+          : r
+      );
+    } else {
+      nextRecipes = [...recipes, sanitizedRecipe];
+    }
+    nextRecipes = sanitizeRecipes(nextRecipes);
     setRecipes(nextRecipes);
-    showNotification(`เพิ่มสูตรสำหรับสินค้า ${recipe.Product_Name} เรียบร้อย`);
+    showNotification(`บันทึกสูตร ${recipe.Product_Code} (${recipe.RM_Code}) เรียบร้อย`);
     triggerAutoSync({ recipes: nextRecipes });
   };
 
