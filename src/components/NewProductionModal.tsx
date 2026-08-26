@@ -44,9 +44,9 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
         setDate(initialData.Date);
         setProductCode(initialData.Product_Code);
         setProducedQtyStr(initialData.Produced_Qty.toString());
-        setDispatchAStr(initialData.Dispatch_Branch_A.toString());
-        setDispatchBStr(initialData.Dispatch_Branch_B.toString());
-        setAutoDeduct(false);
+        setDispatchAStr((initialData.Dispatch_Branch_A || 0).toString());
+        setDispatchBStr((initialData.Dispatch_Branch_B || 0).toString());
+        setAutoDeduct(true); // Default to auto-updating ingredient deductions on edit
       } else {
         setDate(new Date().toISOString().split('T')[0]);
         setProductCode(productCodes[0] || '');
@@ -279,10 +279,14 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
             <div className="text-xs">
               <span className="font-bold text-amber-950 flex items-center gap-1">
                 <Zap className="w-3.5 h-3.5 text-amber-600" />
-                ตัดสต็อกวัตถุดิบอัตโนมัติ (Auto-deduct) ตามสูตร BOM ทันที
+                {initialData
+                  ? 'อัปเดต / ปรับยอดตัดสต็อกวัตถุดิบอัตโนมัติตามยอดผลิตใหม่นี้'
+                  : 'ตัดสต็อกวัตถุดิบอัตโนมัติ (Auto-deduct) ตามสูตร BOM ทันที'}
               </span>
               <p className="text-[11px] text-amber-800 mt-0.5">
-                ระบบจะสร้างรายการเบิก (Actual Usage) อัตโนมัติใน Tab เบิก/รับสต็อก ครบทุกวัตถุดิบในสูตร
+                {initialData
+                  ? 'ระบบจะคำนวณและปรับเปลี่ยนยอดเบิกใช้จริง (Actual Usage) ของวัตถุดิบทุกรายการในสูตรให้ตรงกับยอดผลิตใหม่ทันที'
+                  : 'ระบบจะสร้างรายการเบิก (Actual Usage) อัตโนมัติใน Tab เบิก/รับสต็อก ครบทุกวัตถุดิบในสูตร'}
               </p>
             </div>
           </label>

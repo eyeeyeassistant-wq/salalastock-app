@@ -921,7 +921,8 @@ export default function App() {
         materials,
         recipes,
         productions,
-        transactions
+        transactions,
+        stockCountRecords
       );
 
       setSpreadsheetId(sheetInfo.spreadsheetId);
@@ -973,7 +974,8 @@ export default function App() {
         materials,
         recipes,
         productions,
-        transactions
+        transactions,
+        stockCountRecords
       );
 
       setSpreadsheetId(sheetId);
@@ -1041,7 +1043,8 @@ export default function App() {
             materials,
             recipes,
             productions,
-            transactions
+            transactions,
+            stockCountRecords
           );
         }
       }
@@ -1277,14 +1280,22 @@ export default function App() {
     setIsNewTxModalOpen(true);
   };
 
-  // 5. Save/Edit Daily Production (with optional Auto-Deduct)
+  // 5. Save/Edit Daily Production (with optional Auto-Deduct & Auto-Update on Edit)
   const handleSaveProduction = async (prod: DailyProduction, autoDeduct: boolean) => {
     const fullProd = calculateProductionRowTotals(prod);
     let nextProds: DailyProduction[] = [];
     let nextTxs = transactions;
 
+    const pCode = (fullProd.Product_Code || '').trim().toUpperCase();
+    const productRecipes = recipes.filter(
+      (r) => (r.Product_Code || '').trim().toUpperCase() === pCode
+    );
+
     if (editingProduction !== null) {
       const editIdx = editingProduction.index;
+      const oldProd = productions[editIdx];
+      const oldCode = (oldProd.Product_Code || '').trim().toUpperCase();
+
       setProductions((prev) => {
         const next = [...prev];
         next[editIdx] = fullProd;
@@ -1292,7 +1303,36 @@ export default function App() {
         return next;
       });
       setEditingProduction(null);
-      showNotification(`แก้ไขข้อมูลการผลิต ${fullProd.Product_Code} วันที่ ${fullProd.Date} สำเร็จ`);
+
+      // If autoDeduct is enabled on edit:
+      // Remove previously auto-deducted transactions for this batch and replace with new calculated usage
+      if (autoDeduct) {
+        const filteredTxs = transactions.filter((t) => {
+          const isOldAuto =
+            t.Date === oldProd.Date &&
+            t.Type === 'Actual Usage' &&
+            (t.Recorder?.includes('Auto') || t.Note?.includes('ตัดสต็อก')) &&
+            (t.Note?.includes(oldCode) || t.Note?.includes(oldProd.Product_Code));
+          return !isOldAuto;
+        });
+
+        const newAutoTxs: StockTransaction[] = productRecipes.map((r) => ({
+          Date: fullProd.Date,
+          Type: 'Actual Usage',
+          RM_Code: r.RM_Code,
+          Qty: Number(((Number(r.Standard_Qty) || 0) * (Number(fullProd.Produced_Qty) || 0)).toFixed(3)),
+          Recorder: 'ระบบตัดสต็อกอัตโนมัติ (Auto BOM)',
+          Note: `ตัดสต็อกตามยอดผลิต ${fullProd.Product_Code} (${fullProd.Produced_Qty} ชิ้น)`,
+        }));
+
+        nextTxs = [...newAutoTxs, ...filteredTxs];
+        setTransactions(nextTxs);
+        showNotification(
+          `✅ แก้ไขยอดผลิต ${fullProd.Product_Code} (${fullProd.Produced_Qty} ชิ้น) และปรับยอดตัดสต็อกวัตถุดิบ ${newAutoTxs.length} รายการให้อัตโนมัติ!`
+        );
+      } else {
+        showNotification(`✅ แก้ไขข้อมูลการผลิต ${fullProd.Product_Code} วันที่ ${fullProd.Date} สำเร็จ`);
+      }
     } else {
       setProductions((prev) => {
         const next = [fullProd, ...prev];
@@ -1302,14 +1342,13 @@ export default function App() {
 
       // If auto-deduct is enabled: generate Actual Usage transactions for all recipe ingredients
       if (autoDeduct) {
-        const productRecipes = recipes.filter((r) => r.Product_Code === prod.Product_Code);
         const newAutoTxs: StockTransaction[] = productRecipes.map((r) => ({
-          Date: prod.Date,
+          Date: fullProd.Date,
           Type: 'Actual Usage',
           RM_Code: r.RM_Code,
-          Qty: Number((r.Standard_Qty * prod.Produced_Qty).toFixed(3)),
+          Qty: Number(((Number(r.Standard_Qty) || 0) * (Number(fullProd.Produced_Qty) || 0)).toFixed(3)),
           Recorder: 'ระบบตัดสต็อกอัตโนมัติ (Auto BOM)',
-          Note: `ตัดสต็อกตามยอดผลิต ${prod.Product_Code} (${prod.Produced_Qty} ชิ้น)`,
+          Note: `ตัดสต็อกตามยอดผลิต ${fullProd.Product_Code} (${fullProd.Produced_Qty} ชิ้น)`,
         }));
 
         if (newAutoTxs.length > 0) {
@@ -1320,10 +1359,10 @@ export default function App() {
           });
         }
         showNotification(
-          `บันทึกยอดผลิต ${prod.Product_Code} (${prod.Produced_Qty} ชิ้น) และตัดสต็อกวัตถุดิบ ${newAutoTxs.length} รายการอัตโนมัติ!`
+          `✅ บันทึกยอดผลิต ${fullProd.Product_Code} (${fullProd.Produced_Qty} ชิ้น) และตัดสต็อกวัตถุดิบ ${newAutoTxs.length} รายการอัตโนมัติ!`
         );
       } else {
-        showNotification(`บันทึกยอดผลิต ${prod.Product_Code} (${prod.Produced_Qty} ชิ้น) เรียบร้อย`);
+        showNotification(`✅ บันทึกยอดผลิต ${fullProd.Product_Code} (${fullProd.Produced_Qty} ชิ้น) เรียบร้อย`);
       }
 
       // Legacy single row append if OAuth sheet connected
@@ -1347,26 +1386,39 @@ export default function App() {
     setIsNewProdModalOpen(true);
   };
 
-  // 6. Manual trigger to Auto-Deduct batch
+  // 6. Manual trigger to Auto-Deduct batch (with duplicate protection)
   const handleAutoDeductBatch = (prod: DailyProduction) => {
-    const productRecipes = recipes.filter((r) => r.Product_Code === prod.Product_Code);
+    const pCode = (prod.Product_Code || '').trim().toUpperCase();
+    const productRecipes = recipes.filter(
+      (r) => (r.Product_Code || '').trim().toUpperCase() === pCode
+    );
     if (productRecipes.length === 0) {
       alert(`ไม่พบสูตร BOM สำหรับสินค้ารหัส ${prod.Product_Code}`);
       return;
     }
 
+    // Filter out previous auto-deductions for this batch to prevent double counting
+    const filteredTxs = transactions.filter((t) => {
+      const isOldAuto =
+        t.Date === prod.Date &&
+        t.Type === 'Actual Usage' &&
+        (t.Recorder?.includes('Auto') || t.Note?.includes('ตัดสต็อก')) &&
+        (t.Note?.includes(pCode) || t.Note?.includes(prod.Product_Code));
+      return !isOldAuto;
+    });
+
     const newAutoTxs: StockTransaction[] = productRecipes.map((r) => ({
       Date: prod.Date,
       Type: 'Actual Usage',
       RM_Code: r.RM_Code,
-      Qty: Number((r.Standard_Qty * prod.Produced_Qty).toFixed(3)),
-      Recorder: 'ระบบตัดสต็อกอัตโนมัติ (Auto-deduct Batch)',
-      Note: `ตัดสต็อกย้อนหลังจากยอดผลิต ${prod.Product_Code} วันที่ ${prod.Date}`,
+      Qty: Number(((Number(r.Standard_Qty) || 0) * (Number(prod.Produced_Qty) || 0)).toFixed(3)),
+      Recorder: 'ระบบตัดสต็อกอัตโนมัติ (Auto BOM)',
+      Note: `ตัดสต็อกตามยอดผลิต ${prod.Product_Code} (${prod.Produced_Qty} ชิ้น)`,
     }));
 
-    const nextTxs = [...newAutoTxs, ...transactions];
+    const nextTxs = [...newAutoTxs, ...filteredTxs];
     setTransactions(nextTxs);
-    showNotification(`ตัดสต็อกวัตถุดิบ ${newAutoTxs.length} รายการตามสูตร BOM เรียบร้อยแล้ว!`);
+    showNotification(`⚡ ตัดสต็อกวัตถุดิบ ${newAutoTxs.length} รายการตามสูตร BOM x ยอดผลิต ${prod.Produced_Qty} ชิ้น เรียบร้อยแล้ว!`);
     triggerAutoSync({ transactions: nextTxs });
   };
 
@@ -1684,6 +1736,31 @@ export default function App() {
             setIsSyncModalOpen(true);
           }
         }}
+      />
+
+      <GoogleSheetsSyncModal
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        user={user}
+        spreadsheetId={spreadsheetId}
+        spreadsheetUrl={spreadsheetUrl}
+        webhookUrl={webhookUrl}
+        autoSyncEnabled={autoSyncEnabled}
+        onToggleAutoSync={handleToggleAutoSync}
+        isSyncing={isSyncing}
+        onSaveWebhookUrl={handleSaveWebhookUrl}
+        onSignIn={handleSignIn}
+        onCreateNewSheet={handleCreateNewSheet}
+        onLinkExistingSheet={handleLinkExistingSheet}
+        onPushAllToSheet={handlePushAllToSheet}
+        onPullFromSheet={handlePullFromGoogleSheet}
+        onDisconnectSheet={handleDisconnectSheet}
+        materials={materials}
+        recipes={recipes}
+        productions={productions}
+        transactions={transactions}
+        stockCountRecords={stockCountRecords}
+        onImportExcelData={handleImportExcelData}
       />
     </div>
   );

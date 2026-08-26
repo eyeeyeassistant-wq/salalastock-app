@@ -78,7 +78,7 @@ function updateMonthlySummaryFromMaster(ss) {
         '=IFERROR(VLOOKUP(A' + r + ', Master_Materials!$A:$E, 4, FALSE), 0)',
         '=IFERROR(SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A' + r + ', Stock_Transactions!$B:$B, "Receive"), 0)',
         '=IFERROR(SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A' + r + ', Stock_Transactions!$B:$B, "Actual Usage"), 0)',
-        '=IFERROR(SUMPRODUCT(SUMIFS(Daily_Production!$C:$C, Daily_Production!$B:$B, FILTER(BOM_Recipe!$A:$A, BOM_Recipe!$C:$C = A' + r + ')), FILTER(BOM_Recipe!$D:$D, BOM_Recipe!$C:$C = A' + r + ')), 0)',
+        '=IFERROR(SUMPRODUCT((BOM_Recipe!$C$2:$C = A' + r + ') * (BOM_Recipe!$D$2:$D), SUMIFS(Daily_Production!$C:$C, Daily_Production!$B:$B, BOM_Recipe!$A$2:$A)), 0)',
         '=D' + r + ' + E' + r + ' - F' + r,
         '=F' + r + ' - G' + r,
         '=IF(A' + r + '="", "", IF(H' + r + ' <= IFERROR(VLOOKUP(A' + r + ', Master_Materials!$A:$E, 5, FALSE), 0), "⚠️ ใกล้หมด", "ปกติ"))'
@@ -239,26 +239,64 @@ function readAllData(ss) {
   // 5. Monthly_Stock_Count
   var countSheet = ss.getSheetByName('Monthly_Stock_Count');
   if (countSheet && countSheet.getLastRow() > 1) {
-    var countVals = countSheet.getRange(2, 1, countSheet.getLastRow() - 1, 7).getValues();
+    var numCols = countSheet.getLastColumn();
+    var countVals = countSheet.getRange(2, 1, countSheet.getLastRow() - 1, numCols).getValues();
     var countMap = {};
     countVals.forEach(function(row) {
-      var month = String(row[0] || '');
-      if (month && row[1]) {
-        if (!countMap[month]) {
-          countMap[month] = {
-            id: 'count_' + month,
-            Month: month,
-            Recorded_At: String(row[5] || ''),
-            Note: String(row[6] || ''),
-            Items: []
-          };
+      var month = String(row[0] || '').trim();
+      if (month) {
+        var countDate = '';
+        var countedBy = '';
+        var rmCode = '';
+        var rmName = '';
+        var unit = '';
+        var systemQty = 0;
+        var countedQty = 0;
+        var variance = 0;
+        var rowNote = '';
+
+        if (numCols >= 10) {
+          countDate = row[1] instanceof Date ? row[1].toISOString().split('T')[0] : String(row[1] || '');
+          countedBy = String(row[2] || '');
+          rmCode = String(row[3] || '').trim();
+          rmName = String(row[4] || '').trim();
+          unit = String(row[5] || '').trim();
+          systemQty = Number(row[6]) || 0;
+          countedQty = Number(row[7]) || 0;
+          variance = Number(row[8]) || 0;
+          rowNote = String(row[9] || '');
+        } else {
+          // Backward compatibility for 7-column layout
+          rmCode = String(row[1] || '').trim();
+          rmName = String(row[2] || '').trim();
+          unit = String(row[3] || '').trim();
+          countedQty = Number(row[4]) || 0;
+          countDate = row[5] instanceof Date ? row[5].toISOString().split('T')[0] : String(row[5] || '');
+          rowNote = String(row[6] || '');
         }
-        countMap[month].Items.push({
-          RM_Code: String(row[1]),
-          RM_Name: String(row[2] || ''),
-          Unit: String(row[3] || ''),
-          Counted_Qty: Number(row[4]) || 0
-        });
+
+        if (rmCode) {
+          if (!countMap[month]) {
+            countMap[month] = {
+              id: 'count_' + month,
+              Month: month,
+              Count_Date: countDate,
+              Counted_By: countedBy || 'พนักงานประจำร้าน / ทีมผลิต',
+              Note: rowNote,
+              Items: [],
+              CreatedAt: new Date().toISOString()
+            };
+          }
+          countMap[month].Items.push({
+            RM_Code: rmCode,
+            RM_Name: rmName,
+            Unit: unit,
+            System_Qty: systemQty,
+            Counted_Qty: countedQty,
+            Variance: variance,
+            Note: rowNote
+          });
+        }
       }
     });
     result.monthlyStockCounts = Object.keys(countMap).map(function(k) { return countMap[k]; });
@@ -348,7 +386,7 @@ function syncAllData(ss, data) {
       '=IFERROR(VLOOKUP(A' + r + ', Master_Materials!$A:$E, 4, FALSE), 0)',
       '=IFERROR(SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A' + r + ', Stock_Transactions!$B:$B, "Receive"), 0)',
       '=IFERROR(SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A' + r + ', Stock_Transactions!$B:$B, "Actual Usage"), 0)',
-      '=IFERROR(SUMPRODUCT(SUMIFS(Daily_Production!$C:$C, Daily_Production!$B:$B, FILTER(BOM_Recipe!$A:$A, BOM_Recipe!$C:$C = A' + r + ')), FILTER(BOM_Recipe!$D:$D, BOM_Recipe!$C:$C = A' + r + ')), 0)',
+      '=IFERROR(SUMPRODUCT((BOM_Recipe!$C$2:$C = A' + r + ') * (BOM_Recipe!$D$2:$D), SUMIFS(Daily_Production!$C:$C, Daily_Production!$B:$B, BOM_Recipe!$A$2:$A)), 0)',
       '=D' + r + ' + E' + r + ' - F' + r,
       '=F' + r + ' - G' + r,
       '=IF(A' + r + '="", "", IF(H' + r + ' <= IFERROR(VLOOKUP(A' + r + ', Master_Materials!$A:$E, 5, FALSE), 0), "⚠️ ใกล้หมด", "ปกติ"))'
@@ -361,21 +399,32 @@ function syncAllData(ss, data) {
   var countSheet = getOrCreateSheet(ss, 'Monthly_Stock_Count');
   countSheet.clearContents();
   var countRows = [
-    ['Month', 'RM_Code', 'RM_Name', 'Unit', 'Counted_Qty', 'Recorded_At', 'Note']
+    ['Month', 'Count_Date', 'Counted_By', 'RM_Code', 'RM_Name', 'Unit', 'System_Qty', 'Counted_Qty', 'Variance', 'Note']
   ];
-  var counts = data.monthlyStockCounts || [];
-  counts.forEach(function(c) {
+  var countsList = counts || [];
+  countsList.forEach(function(c) {
     var items = c.Items || [];
     items.forEach(function(it) {
-      countRows.push([c.Month, it.RM_Code, it.RM_Name, it.Unit, Number(it.Counted_Qty) || 0, c.Recorded_At || '', c.Note || '']);
+      countRows.push([
+        c.Month || '',
+        c.Count_Date || '',
+        c.Counted_By || '',
+        it.RM_Code || '',
+        it.RM_Name || '',
+        it.Unit || '',
+        Number(it.System_Qty) || 0,
+        Number(it.Counted_Qty) || 0,
+        Number(it.Variance) || 0,
+        it.Note || c.Note || ''
+      ]);
     });
   });
   if (countRows.length > 1) {
-    countSheet.getRange(1, 1, countRows.length, 7).setValues(countRows);
+    countSheet.getRange(1, 1, countRows.length, 10).setValues(countRows);
   } else {
-    countSheet.getRange(1, 1, 1, 7).setValues(countRows);
+    countSheet.getRange(1, 1, 1, 10).setValues(countRows);
   }
-  countSheet.getRange(1, 1, 1, 7).setBackground('#0f172a').setFontColor('#ffffff').setFontWeight('bold');
+  countSheet.getRange(1, 1, 1, 10).setBackground('#0f172a').setFontColor('#ffffff').setFontWeight('bold');
 }
 
 function appendTransactionRow(ss, tx) {
@@ -520,6 +569,12 @@ export async function createStockSpreadsheet(
           gridProperties: { frozenRowCount: 1, columnCount: 12 },
         },
       },
+      {
+        properties: {
+          title: 'Monthly_Stock_Count',
+          gridProperties: { frozenRowCount: 1, columnCount: 12 },
+        },
+      },
     ],
   };
 
@@ -557,7 +612,8 @@ export async function initializeSheetDataAndFormulas(
   materials: MasterMaterial[],
   recipes: BOMRecipe[],
   productions: DailyProduction[],
-  transactions: StockTransaction[]
+  transactions: StockTransaction[],
+  stockCountRecords?: MonthlyStockCountRecord[]
 ) {
   // 1. Master_Materials rows
   const materialsRows = [
@@ -623,13 +679,34 @@ export async function initializeSheetDataAndFormulas(
         `=XLOOKUP(A${rowNum}, Master_Materials!$A:$A, Master_Materials!$D:$D, 0)`,
         `=SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A${rowNum}, Stock_Transactions!$B:$B, "Receive")`,
         `=SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A${rowNum}, Stock_Transactions!$B:$B, "Actual Usage")`,
-        `=IFERROR(SUMPRODUCT(SUMIFS(Daily_Production!$C:$C, Daily_Production!$B:$B, FILTER(BOM_Recipe!$A:$A, BOM_Recipe!$C:$C = A${rowNum})), FILTER(BOM_Recipe!$D:$D, BOM_Recipe!$C:$C = A${rowNum})), 0)`,
+        `=IFERROR(SUMPRODUCT((BOM_Recipe!$C$2:$C = A${rowNum}) * (BOM_Recipe!$D$2:$D), SUMIFS(Daily_Production!$C:$C, Daily_Production!$B:$B, BOM_Recipe!$A$2:$A)), 0)`,
         `=D${rowNum} + E${rowNum} - F${rowNum}`,
         `=F${rowNum} - G${rowNum}`,
         `=IF(A${rowNum}="", "", IF(H${rowNum} <= XLOOKUP(A${rowNum}, Master_Materials!$A:$A, Master_Materials!$E:$E, 0), "⚠️ วัตถุดิบใกล้หมด (ต้องสั่งเพิ่ม)", "ปกติ"))`,
       ];
     }),
   ];
+
+  // 6. Monthly_Stock_Count rows
+  const countRows: any[] = [
+    ['Month', 'Count_Date', 'Counted_By', 'RM_Code', 'RM_Name', 'Unit', 'System_Qty', 'Counted_Qty', 'Variance', 'Note']
+  ];
+  (stockCountRecords || []).forEach((c) => {
+    (c.Items || []).forEach((it) => {
+      countRows.push([
+        c.Month || '',
+        c.Count_Date || '',
+        c.Counted_By || '',
+        it.RM_Code || '',
+        it.RM_Name || '',
+        it.Unit || '',
+        Number(it.System_Qty) || 0,
+        Number(it.Counted_Qty) || 0,
+        Number(it.Variance) || 0,
+        it.Note || c.Note || ''
+      ]);
+    });
+  });
 
   // Batch update all data
   const data = [
@@ -638,6 +715,7 @@ export async function initializeSheetDataAndFormulas(
     { range: 'Daily_Production!A1', values: productionRows },
     { range: 'Stock_Transactions!A1', values: transactionRows },
     { range: 'Monthly_Stock_Summary!A1', values: summaryRows },
+    { range: 'Monthly_Stock_Count!A1', values: countRows },
   ];
 
   const response = await fetch(

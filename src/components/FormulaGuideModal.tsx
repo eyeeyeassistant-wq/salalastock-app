@@ -34,7 +34,7 @@ export const FormulaGuideModal: React.FC<FormulaGuideModalProps> = ({
   const formulas = {
     totalReceive: `=SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A2, Stock_Transactions!$B:$B, "Receive")`,
     actualUsage: `=SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A2, Stock_Transactions!$B:$B, "Actual Usage")`,
-    expectedUsage: `=IFERROR(SUMPRODUCT(SUMIFS(Daily_Production!$C:$C, Daily_Production!$B:$B, FILTER(BOM_Recipe!$A:$A, BOM_Recipe!$C:$C = A2)), FILTER(BOM_Recipe!$D:$D, BOM_Recipe!$C:$C = A2)), 0)`,
+    expectedUsage: `=IFERROR(SUMPRODUCT((BOM_Recipe!$C$2:$C = A2) * (BOM_Recipe!$D$2:$D), SUMIFS(Daily_Production!$C:$C, Daily_Production!$B:$B, BOM_Recipe!$A$2:$A)), 0)`,
     endingStock: `=D2 + E2 - F2`,
     variance: `=F2 - G2`,
     stockStatus: `=IF(A2="", "", IF(H2 <= XLOOKUP(A2, Master_Materials!$A:$A, Master_Materials!$E:$E, 0), "⚠️ วัตถุดิบใกล้หมด (ต้องสั่งเพิ่ม)", "ปกติ"))`,
