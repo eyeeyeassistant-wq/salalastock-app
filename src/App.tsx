@@ -1584,30 +1584,6 @@ export default function App() {
           transactions: transactions.length,
         }}
       />
-      <GoogleSheetsSyncModal
-        isOpen={isSyncModalOpen}
-        onClose={() => setIsSyncModalOpen(false)}
-        user={user}
-        spreadsheetId={spreadsheetId}
-        spreadsheetUrl={spreadsheetUrl}
-        webhookUrl={webhookUrl}
-        autoSyncEnabled={autoSyncEnabled}
-        onToggleAutoSync={handleToggleAutoSync}
-        isSyncing={isSyncing}
-        onSaveWebhookUrl={handleSaveWebhookUrl}
-        onSignIn={handleSignIn}
-        onCreateNewSheet={handleCreateNewSheet}
-        onLinkExistingSheet={handleLinkExistingSheet}
-        onPushAllToSheet={handlePushAllToSheet}
-        onPullFromSheet={handlePullFromGoogleSheet}
-        onDisconnectSheet={handleDisconnectSheet}
-        materials={materials}
-        recipes={recipes}
-        productions={productions}
-        transactions={transactions}
-        stockCountRecords={stockCountRecords}
-        onImportExcelData={handleImportExcelData}
-      />
 
       <FormulaGuideModal
         isOpen={isFormulaModalOpen}
