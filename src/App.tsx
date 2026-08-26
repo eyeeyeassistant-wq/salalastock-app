@@ -417,32 +417,42 @@ export default function App() {
 
   // Single item deletion handlers
   const handleDeleteMaterial = (rmCode: string) => {
-    const nextMats = materials.filter((m) => m.RM_Code !== rmCode);
-    const nextRecipes = recipes.filter((r) => r.RM_Code !== rmCode);
+    const code = (rmCode || '').trim().toUpperCase();
+    const nextMats = materials.filter((m) => (m.RM_Code || '').trim().toUpperCase() !== code);
+    const nextRecipes = recipes.filter((r) => (r.RM_Code || '').trim().toUpperCase() !== code);
     setMaterials(nextMats);
     setRecipes(nextRecipes);
-    showNotification(`ลบวัตถุดิบ ${rmCode} เรียบร้อยแล้ว`);
+    localStorage.setItem('stock_materials', JSON.stringify(nextMats));
+    localStorage.setItem('stock_recipes', JSON.stringify(nextRecipes));
+    showNotification(`🗑️ ลบวัตถุดิบ ${code} เรียบร้อยแล้ว`);
     triggerAutoSync({ materials: nextMats, recipes: nextRecipes });
   };
 
   const handleDeleteRecipeItem = (productCode: string, rmCode: string) => {
-    const nextRecipes = recipes.filter((r) => !(r.Product_Code === productCode && r.RM_Code === rmCode));
+    const pCode = (productCode || '').trim().toUpperCase();
+    const rCode = (rmCode || '').trim().toUpperCase();
+    const nextRecipes = recipes.filter(
+      (r) => !((r.Product_Code || '').trim().toUpperCase() === pCode && (r.RM_Code || '').trim().toUpperCase() === rCode)
+    );
     setRecipes(nextRecipes);
-    showNotification(`ลบส่วนผสม ${rmCode} ออกจากสูตร ${productCode} เรียบร้อยแล้ว`);
+    localStorage.setItem('stock_recipes', JSON.stringify(nextRecipes));
+    showNotification(`🗑️ ลบส่วนผสม ${rCode} ออกจากสูตร ${pCode} เรียบร้อยแล้ว`);
     triggerAutoSync({ recipes: nextRecipes });
   };
 
   const handleDeleteProduction = (index: number) => {
     const nextProds = productions.filter((_, idx) => idx !== index);
     setProductions(nextProds);
-    showNotification('ลบรายการผลิตเรียบร้อยแล้ว');
+    localStorage.setItem('stock_productions', JSON.stringify(nextProds));
+    showNotification('🗑️ ลบรายการผลิตเรียบร้อยแล้ว');
     triggerAutoSync({ productions: nextProds });
   };
 
   const handleDeleteTransaction = (index: number) => {
     const nextTxs = transactions.filter((_, idx) => idx !== index);
     setTransactions(nextTxs);
-    showNotification('ลบรายการประวัติสต๊อกเรียบร้อยแล้ว');
+    localStorage.setItem('stock_transactions', JSON.stringify(nextTxs));
+    showNotification('🗑️ ลบรายการประวัติสต๊อกเรียบร้อยแล้ว');
     triggerAutoSync({ transactions: nextTxs });
   };
 

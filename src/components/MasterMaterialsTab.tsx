@@ -9,6 +9,7 @@ import {
   Edit2,
   Save,
   X,
+  Trash2,
 } from 'lucide-react';
 
 interface MasterMaterialsTabProps {
@@ -30,6 +31,8 @@ export const MasterMaterialsTab: React.FC<MasterMaterialsTabProps> = ({
   const [isAdding, setIsAdding] = useState(false);
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<MasterMaterial | null>(null);
+  const [materialToDelete, setMaterialToDelete] = useState<MasterMaterial | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
   // New Material form state
   const [newRMCode, setNewRMCode] = useState('');
@@ -54,24 +57,19 @@ export const MasterMaterialsTab: React.FC<MasterMaterialsTabProps> = ({
     );
 
     if (existing) {
-      if (
-        confirm(
-          `รหัสวัตถุดิบ "${trimmedCode}" มีอยู่ในระบบแล้ว (${existing.RM_Name}) คุณต้องการอัปเดตข้อมูลเดิมใช่หรือไม่?`
-        )
-      ) {
-        onUpdateMaterial({
-          RM_Code: trimmedCode,
-          RM_Name: newRMName.trim(),
-          Unit: newUnit.trim() || 'kg',
-          Opening_Stock: Number(newOpening) || 0,
-          Safety_Stock: Number(newSafety) || 0,
-        });
-        setNewRMCode('');
-        setNewRMName('');
-        setNewOpening(0);
-        setNewSafety(10);
-        setIsAdding(false);
-      }
+      onUpdateMaterial({
+        RM_Code: trimmedCode,
+        RM_Name: newRMName.trim(),
+        Unit: newUnit.trim() || 'kg',
+        Opening_Stock: Number(newOpening) || 0,
+        Safety_Stock: Number(newSafety) || 0,
+      });
+      setNewRMCode('');
+      setNewRMName('');
+      setNewOpening(0);
+      setNewSafety(10);
+      setIsAdding(false);
+      setDuplicateWarning(null);
       return;
     }
 
@@ -88,6 +86,7 @@ export const MasterMaterialsTab: React.FC<MasterMaterialsTabProps> = ({
     setNewOpening(0);
     setNewSafety(10);
     setIsAdding(false);
+    setDuplicateWarning(null);
   };
 
   const handleStartEdit = (mat: MasterMaterial) => {
@@ -100,6 +99,13 @@ export const MasterMaterialsTab: React.FC<MasterMaterialsTabProps> = ({
       onUpdateMaterial(editForm);
       setEditingCode(null);
       setEditForm(null);
+    }
+  };
+
+  const confirmDelete = () => {
+    if (materialToDelete && onDeleteMaterial) {
+      onDeleteMaterial(materialToDelete.RM_Code);
+      setMaterialToDelete(null);
     }
   };
 
@@ -406,22 +412,18 @@ export const MasterMaterialsTab: React.FC<MasterMaterialsTabProps> = ({
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => handleStartEdit(m)}
-                            className="p-1 text-slate-400 hover:text-blue-600 transition-colors"
+                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                             title="แก้ไขข้อมูล / Safety Stock"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           {onDeleteMaterial && (
                             <button
-                              onClick={() => {
-                                if (window.confirm(`ต้องการลบวัตถุดิบ ${m.RM_Code} (${m.RM_Name}) ใช่หรือไม่?`)) {
-                                  onDeleteMaterial(m.RM_Code);
-                                }
-                              }}
-                              className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
-                              title="ลบวัตถุดิบนี้"
+                              onClick={() => setMaterialToDelete(m)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                              title={`ลบวัตถุดิบ ${m.RM_Code} (${m.RM_Name})`}
                             >
-                              <X className="w-3.5 h-3.5" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           )}
                         </div>
@@ -434,6 +436,81 @@ export const MasterMaterialsTab: React.FC<MasterMaterialsTabProps> = ({
           </table>
         </div>
       </div>
+
+      {/* In-App Delete Confirmation Modal */}
+      {materialToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="bg-rose-50 border-b border-rose-100 p-5 flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-slate-900">
+                  ยืนยันการลบวัตถุดิบ
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  ระบบจะลบวัตถุดิบนี้ออกจากทะเบียน Master Materials ทันที
+                </p>
+              </div>
+              <button
+                onClick={() => setMaterialToDelete(null)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">รหัสวัตถุดิบ:</span>
+                  <span className="font-mono font-bold text-slate-900">
+                    {materialToDelete.RM_Code}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">ชื่อวัตถุดิบ:</span>
+                  <span className="font-semibold text-slate-800">
+                    {materialToDelete.RM_Name}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">ยอดยกมา:</span>
+                  <span className="font-mono text-slate-700">
+                    {materialToDelete.Opening_Stock.toLocaleString()} {materialToDelete.Unit}
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 p-3 rounded-lg flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                <span>
+                  หากมีสูตรคำนวณ BOM ที่ใช้วัตถุดิบนี้ รายการส่วนผสมที่เกี่ยวข้องจะถูกนำออกด้วย
+                </span>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setMaterialToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200/70 transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition-colors flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>ยืนยันลบวัตถุดิบนี้</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -15,6 +15,7 @@ import {
   FileText,
   Edit2,
   X,
+  Trash2,
 } from 'lucide-react';
 
 interface StockTransactionsTabProps {
@@ -35,6 +36,7 @@ export const StockTransactionsTab: React.FC<StockTransactionsTabProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'Receive' | 'Actual Usage'>('all');
   const [materialFilter, setMaterialFilter] = useState<string>('all');
+  const [txToDelete, setTxToDelete] = useState<{ index: number; tx: StockTransaction } | null>(null);
 
   const filteredTransactions = transactions
     .filter((tx) => {
@@ -54,6 +56,11 @@ export const StockTransactionsTab: React.FC<StockTransactionsTabProps> = ({
   const getMaterialName = (rmCode: string) => {
     const mat = materials.find((m) => m.RM_Code === rmCode);
     return mat ? `${mat.RM_Name} (${mat.Unit})` : rmCode;
+  };
+
+  const getMaterialUnit = (rmCode: string) => {
+    const mat = materials.find((m) => m.RM_Code === rmCode);
+    return mat ? mat.Unit : 'kg';
   };
 
   const totalReceiveCount = transactions.filter((t) => t.Type === 'Receive').length;
@@ -232,15 +239,11 @@ export const StockTransactionsTab: React.FC<StockTransactionsTabProps> = ({
                         )}
                         {onDeleteTransaction && (
                           <button
-                            onClick={() => {
-                              if (window.confirm(`ต้องการลบรายการ ${tx.Type} สำหรับ ${tx.RM_Code} วันที่ ${tx.Date} หรือไม่?`)) {
-                                onDeleteTransaction(idx);
-                              }
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors min-h-[32px] min-w-[32px] flex items-center justify-center"
+                            onClick={() => setTxToDelete({ index: idx, tx })}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors min-h-[32px] min-w-[32px] flex items-center justify-center"
                             title="ลบรายการนี้"
                           >
-                            <X className="w-4 h-4" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         )}
                       </div>
@@ -258,6 +261,83 @@ export const StockTransactionsTab: React.FC<StockTransactionsTabProps> = ({
           </div>
         )}
       </div>
+
+      {/* In-App Delete Transaction Confirmation Modal */}
+      {txToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="bg-rose-50 border-b border-rose-100 p-5 flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-slate-900">
+                  ยืนยันการลบประวัติสต๊อก
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  ระบบจะลบรายการนี้ออกจาก Stock_Transactions ทันที
+                </p>
+              </div>
+              <button
+                onClick={() => setTxToDelete(null)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-2.5">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">วันที่:</span>
+                  <span className="font-semibold text-slate-800">{txToDelete.tx.Date}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">ประเภท:</span>
+                  <span className="font-bold text-slate-900">
+                    {txToDelete.tx.Type === 'Receive' ? 'รับเข้า (Receive)' : 'เบิกจริง (Actual Usage)'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">วัตถุดิบ:</span>
+                  <span className="font-mono font-bold text-slate-900">
+                    {txToDelete.tx.RM_Code} ({getMaterialName(txToDelete.tx.RM_Code)})
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">จำนวน:</span>
+                  <span className="font-mono font-bold text-slate-900">
+                    {txToDelete.tx.Qty.toLocaleString()} {getMaterialUnit(txToDelete.tx.RM_Code)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setTxToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200/70 transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteTransaction) {
+                    onDeleteTransaction(txToDelete.index);
+                  }
+                  setTxToDelete(null);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition-colors flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>ยืนยันลบรายการ</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

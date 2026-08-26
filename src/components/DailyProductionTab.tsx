@@ -42,6 +42,7 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
 }) => {
   const [selectedProduct, setSelectedProduct] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('');
+  const [prodToDelete, setProdToDelete] = useState<{ index: number; prod: DailyProduction } | null>(null);
 
   // Extract unique products
   const uniqueProducts = Array.from(
@@ -191,15 +192,11 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
                       </button>
                       {onDeleteProduction && (
                         <button
-                          onClick={() => {
-                            if (window.confirm(`ต้องการลบรายการผลิต ${p.Product_Code} วันที่ ${p.Date} หรือไม่?`)) {
-                              onDeleteProduction(idx);
-                            }
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors min-h-[32px] min-w-[32px] flex items-center justify-center"
+                          onClick={() => setProdToDelete({ index: idx, prod: p })}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors min-h-[32px] min-w-[32px] flex items-center justify-center"
                           title="ลบรายการนี้"
                         >
-                          <X className="w-4 h-4" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       )}
                     </div>
@@ -216,6 +213,83 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
           </div>
         )}
       </div>
+
+      {/* In-App Delete Production Confirmation Modal */}
+      {prodToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="bg-rose-50 border-b border-rose-100 p-5 flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-slate-900">
+                  ยืนยันการลบรายการผลิต
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  ระบบจะลบรายการนี้ออกจาก Daily_Production ทันที
+                </p>
+              </div>
+              <button
+                onClick={() => setProdToDelete(null)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-2.5">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">วันที่ผลิต:</span>
+                  <span className="font-semibold text-slate-800">{prodToDelete.prod.Date}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">รหัสสินค้า:</span>
+                  <span className="font-mono font-bold text-slate-900">
+                    {prodToDelete.prod.Product_Code}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">ยอดผลิต:</span>
+                  <span className="font-mono font-bold text-slate-900">
+                    {prodToDelete.prod.Produced_Qty.toLocaleString()} ชิ้น
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">ยอดส่งสาขา A / B:</span>
+                  <span className="font-mono text-slate-700">
+                    {prodToDelete.prod.Dispatch_Branch_A} / {prodToDelete.prod.Dispatch_Branch_B}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setProdToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200/70 transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteProduction) {
+                    onDeleteProduction(prodToDelete.index);
+                  }
+                  setProdToDelete(null);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition-colors flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>ยืนยันลบรายการ</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Info Card on ARRAYFORMULA */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 text-xs text-slate-800 shadow-xs flex items-start gap-3">
