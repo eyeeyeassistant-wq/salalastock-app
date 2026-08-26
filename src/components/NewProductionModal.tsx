@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { BOMRecipe, DailyProduction, MasterMaterial } from '../types/stock';
 import {
   CalendarCheck,
   Truck,
   Zap,
   X,
+  Check,
+  Package,
 } from 'lucide-react';
 
 interface NewProductionModalProps {
@@ -29,44 +31,73 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
 
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [productCode, setProductCode] = useState(productCodes[0] || '');
-  const [producedQty, setProducedQty] = useState<number>(50);
-  const [dispatchA, setDispatchA] = useState<number>(25);
-  const [dispatchB, setDispatchB] = useState<number>(25);
-  const [autoDeduct, setAutoDeduct] = useState(false);
+  const [producedQtyStr, setProducedQtyStr] = useState<string>('50');
+  const [dispatchAStr, setDispatchAStr] = useState<string>('25');
+  const [dispatchBStr, setDispatchBStr] = useState<string>('25');
+  const [autoDeduct, setAutoDeduct] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    if (initialData) {
-      setDate(initialData.Date);
-      setProductCode(initialData.Product_Code);
-      setProducedQty(initialData.Produced_Qty);
-      setDispatchA(initialData.Dispatch_Branch_A);
-      setDispatchB(initialData.Dispatch_Branch_B);
-      setAutoDeduct(false);
-    } else {
-      setDate(new Date().toISOString().split('T')[0]);
-      setProductCode(productCodes[0] || '');
-      setProducedQty(50);
-      setDispatchA(25);
-      setDispatchB(25);
-      setAutoDeduct(true);
+    if (isOpen) {
+      setErrorMsg(null);
+      if (initialData) {
+        setDate(initialData.Date);
+        setProductCode(initialData.Product_Code);
+        setProducedQtyStr(initialData.Produced_Qty.toString());
+        setDispatchAStr(initialData.Dispatch_Branch_A.toString());
+        setDispatchBStr(initialData.Dispatch_Branch_B.toString());
+        setAutoDeduct(false);
+      } else {
+        setDate(new Date().toISOString().split('T')[0]);
+        setProductCode(productCodes[0] || '');
+        setProducedQtyStr('50');
+        setDispatchAStr('25');
+        setDispatchBStr('25');
+        setAutoDeduct(true);
+      }
     }
-  }, [initialData, isOpen, recipes]);
+  }, [isOpen, initialData]);
+
+  const numProduced = useMemo(() => {
+    const v = parseFloat(producedQtyStr.replace(',', '.'));
+    return isNaN(v) ? 0 : v;
+  }, [producedQtyStr]);
+
+  const numDispatchA = useMemo(() => {
+    const v = parseFloat(dispatchAStr.replace(',', '.'));
+    return isNaN(v) ? 0 : v;
+  }, [dispatchAStr]);
+
+  const numDispatchB = useMemo(() => {
+    const v = parseFloat(dispatchBStr.replace(',', '.'));
+    return isNaN(v) ? 0 : v;
+  }, [dispatchBStr]);
+
+  const totalDispatched = numDispatchA + numDispatchB;
 
   if (!isOpen) return null;
 
-  const totalDispatched = (Number(dispatchA) || 0) + (Number(dispatchB) || 0);
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!productCode || producedQty <= 0) return;
+    setErrorMsg(null);
+
+    if (!productCode) {
+      setErrorMsg('กรุณาเลือกสินค้าที่ผลิต');
+      return;
+    }
+
+    if (numProduced <= 0) {
+      setErrorMsg('กรุณากรอกยอดผลิตที่มากกว่า 0');
+      return;
+    }
 
     onSave(
       {
         Date: date,
         Product_Code: productCode,
-        Produced_Qty: Number(producedQty),
-        Dispatch_Branch_A: Number(dispatchA) || 0,
-        Dispatch_Branch_B: Number(dispatchB) || 0,
+        Produced_Qty: numProduced,
+        Dispatch_Branch_A: numDispatchA,
+        Dispatch_Branch_B: numDispatchB,
         Leftover_Branch_A: 0,
         Leftover_Branch_B: 0,
         Total_Dispatched: totalDispatched,
@@ -79,28 +110,36 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl relative border border-slate-200">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl relative border border-slate-200 my-auto">
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 p-1"
+          type="button"
+          aria-label="Close modal"
+          className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-blue-700">
+        <div className="flex items-center gap-3 mb-4 pr-8">
+          <div className="w-11 h-11 rounded-2xl bg-blue-100 flex items-center justify-center text-blue-700 shrink-0 border border-blue-200 shadow-xs">
             <CalendarCheck className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-slate-900">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
               {initialData ? 'แก้ไขข้อมูลการผลิตและส่งสาขา' : 'บันทึกยอดผลิตและจัดส่งสาขา'}
             </h2>
             <p className="text-xs text-slate-500">
-              Tab <code className="font-mono text-slate-700 bg-slate-100 px-1 py-0.5 rounded">Daily_Production</code> {initialData ? '(อัปเดตข้อมูลที่แก้ไข)' : 'บันทึกยอดผลิตและกระจายส่งสาขา A / B'}
+              บันทึกยอดผลิตจริง และกระจายส่งสาขา A / B
             </p>
           </div>
         </div>
+
+        {errorMsg && (
+          <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 font-semibold">
+            {errorMsg}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Date & Product */}
@@ -114,7 +153,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
                 required
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
@@ -125,13 +164,13 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
               <select
                 value={productCode}
                 onChange={(e) => setProductCode(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs sm:text-sm text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-800 font-medium bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {productCodes.map((code) => {
                   const r = recipes.find((item) => item.Product_Code === code);
                   return (
                     <option key={code} value={code}>
-                      {code} - {r?.Product_Name}
+                      {code} - {r?.Product_Name || code}
                     </option>
                   );
                 })}
@@ -139,35 +178,60 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
             </div>
           </div>
 
-          {/* Produced Qty */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              ยอดผลิตจริง (Produced_Qty) *
-            </label>
+          {/* Produced Qty (Direct Typing) */}
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800">
+                ยอดผลิตจริง (Produced_Qty) *
+              </label>
+              <span className="text-[11px] text-blue-600 font-medium">
+                ✏️ พิมพ์ตัวเลขได้โดยตรง
+              </span>
+            </div>
             <div className="relative">
               <input
-                type="number"
-                step="1"
-                min="1"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 required
-                value={producedQty}
-                onChange={(e) => setProducedQty(parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-base font-mono font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={producedQtyStr}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => {
+                  setProducedQtyStr(e.target.value);
+                  setErrorMsg(null);
+                }}
+                placeholder="เช่น 50"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-lg font-mono font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono text-slate-400">
+              <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-500">
                 ชิ้น
               </span>
+            </div>
+
+            {/* Presets */}
+            <div className="flex items-center gap-1.5 flex-wrap pt-1">
+              <span className="text-[11px] text-slate-500">เลือกเร็ว:</span>
+              {[10, 25, 50, 100, 200].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setProducedQtyStr(v.toString())}
+                  className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 active:scale-95 transition-all"
+                >
+                  {v}
+                </button>
+              ))}
             </div>
           </div>
 
           {/* Dispatch Branch A & B */}
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
             <div className="flex items-center justify-between text-xs sm:text-sm font-bold text-slate-900">
               <span className="flex items-center gap-1.5">
                 <Truck className="w-4 h-4 text-blue-600" />
                 การจัดส่งกระจายสินค้า (Dispatch)
               </span>
-              <span className="font-mono text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+              <span className="font-mono text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200 text-xs">
                 รวมจัดส่ง: {totalDispatched.toLocaleString()} ชิ้น
               </span>
             </div>
@@ -175,40 +239,42 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
             <div className="grid grid-cols-2 gap-3 pt-1">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  ส่งสาขา A (Dispatch_Branch_A)
+                  ส่งสาขา A (ชิ้น)
                 </label>
                 <input
-                  type="number"
-                  step="1"
-                  min="0"
-                  value={dispatchA}
-                  onChange={(e) => setDispatchA(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm font-mono font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  type="text"
+                  inputMode="numeric"
+                  value={dispatchAStr}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setDispatchAStr(e.target.value)}
+                  placeholder="0"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-mono font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-right"
                 />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  ส่งสาขา B (Dispatch_Branch_B)
+                  ส่งสาขา B (ชิ้น)
                 </label>
                 <input
-                  type="number"
-                  step="1"
-                  min="0"
-                  value={dispatchB}
-                  onChange={(e) => setDispatchB(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm font-mono font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  type="text"
+                  inputMode="numeric"
+                  value={dispatchBStr}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setDispatchBStr(e.target.value)}
+                  placeholder="0"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-mono font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-right"
                 />
               </div>
             </div>
           </div>
 
           {/* Auto-Deduct Checkbox */}
-          <label className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200 cursor-pointer">
+          <label className="flex items-start gap-2.5 p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200 cursor-pointer">
             <input
               type="checkbox"
               checked={autoDeduct}
               onChange={(e) => setAutoDeduct(e.target.checked)}
-              className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
+              className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
             />
             <div className="text-xs">
               <span className="font-bold text-amber-950 flex items-center gap-1">
@@ -216,25 +282,26 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
                 ตัดสต็อกวัตถุดิบอัตโนมัติ (Auto-deduct) ตามสูตร BOM ทันที
               </span>
               <p className="text-[11px] text-amber-800 mt-0.5">
-                ระบบจะสร้างรายการเบิก (Actual Usage) ใน <code className="font-mono bg-amber-100/60 px-1 py-0.5 rounded">Stock_Transactions</code> ครบทุกวัตถุดิบในสูตรของสินค้านี้
+                ระบบจะสร้างรายการเบิก (Actual Usage) อัตโนมัติใน Tab เบิก/รับสต็อก ครบทุกวัตถุดิบในสูตร
               </p>
             </div>
           </label>
 
-          {/* Submit */}
-          <div className="flex justify-end gap-2 pt-2">
+          {/* Action Buttons */}
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+              className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
             >
               ยกเลิก
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all"
+              className="px-5 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all flex items-center gap-1.5 active:scale-98"
             >
-              บันทึกการผลิตและส่งสาขา
+              <Check className="w-4 h-4" />
+              <span>บันทึกการผลิตและส่งสาขา</span>
             </button>
           </div>
         </form>

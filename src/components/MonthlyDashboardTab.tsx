@@ -10,6 +10,7 @@ import {
   getAvailableMonths,
   generateMonthlySummaryForPeriod,
 } from '../utils/calculations';
+import { exportMonthlySummaryToExcel } from '../services/excelExport';
 import {
   BarChart,
   Bar,
@@ -866,13 +867,23 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
               คำนวณยอดยกมา + รับเข้า - เบิกใช้จริง และเปรียบเทียบกับสูตร BOM อัตโนมัติ
             </p>
           </div>
-          <button
-            onClick={() => onNavigateToTab('summary')}
-            className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 self-start sm:self-auto"
-          >
-            <span>ไปที่หน้า Tab 5 เต็มรูปแบบ</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+            <button
+              onClick={() => exportMonthlySummaryToExcel(periodSummaries, selectedMonth)}
+              title="ดาวน์โหลดตารางสรุปสต็อกและ Variance เป็นไฟล์ Excel (.xlsx)"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 shadow-xs transition-colors"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>ดาวน์โหลด Excel</span>
+            </button>
+            <button
+              onClick={() => onNavigateToTab('summary')}
+              className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+            >
+              <span>ไปที่หน้า Tab 5 เต็มรูปแบบ</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">

@@ -196,9 +196,11 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
               <input
                 type="number"
                 step="any"
+                inputMode="decimal"
                 required
                 placeholder="0.25"
                 value={newStandardQty}
+                onFocus={(e) => e.target.select()}
                 onChange={(e) => setNewStandardQty(parseFloat(e.target.value) || 0)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs bg-white font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -355,7 +357,9 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
               <input
                 type="number"
                 min="1"
+                inputMode="numeric"
                 value={simQty}
+                onFocus={(e) => e.target.select()}
                 onChange={(e) => setSimQty(Math.max(1, parseInt(e.target.value) || 1))}
                 className="w-24 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />

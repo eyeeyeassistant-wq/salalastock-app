@@ -30,6 +30,67 @@ export const GOOGLE_APPS_SCRIPT_CODE = `/**
  * Google Apps Script Web App for Zero-Login Auto-Sync
  */
 
+function onOpen() {
+  try {
+    var ui = SpreadsheetApp.getUi();
+    ui.createMenu('📦 ระบบสต็อก (Stock Tool)')
+      .addItem('🔄 รีเฟรชตาราง Monthly_Stock_Summary ให้ตรงกับ Master_Materials', 'manualUpdateMonthlySummary')
+      .addToUi();
+  } catch (err) {}
+}
+
+function manualUpdateMonthlySummary() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  updateMonthlySummaryFromMaster(ss);
+  SpreadsheetApp.getUi().alert('✅ อัปเดตตารางสรุป Monthly_Stock_Summary ครบทุกรายการวัตถุดิบแล้ว!');
+}
+
+function onEdit(e) {
+  try {
+    var range = e.range;
+    var sheet = range.getSheet();
+    if (sheet && sheet.getName() === 'Master_Materials') {
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      updateMonthlySummaryFromMaster(ss);
+    }
+  } catch (err) {}
+}
+
+function updateMonthlySummaryFromMaster(ss) {
+  var matSheet = ss.getSheetByName('Master_Materials');
+  if (!matSheet || matSheet.getLastRow() < 2) return;
+  var matVals = matSheet.getRange(2, 1, matSheet.getLastRow() - 1, 3).getValues();
+
+  var sumSheet = getOrCreateSheet(ss, 'Monthly_Stock_Summary');
+  sumSheet.clearContents();
+  var sumHeader = [
+    'RM_Code', 'RM_Name', 'Unit', 'Opening_Stock', 'Total_Receive', 'Actual_Usage', 'Expected_Usage', 'Ending_Stock', 'Variance', 'Stock_Status'
+  ];
+  var sumRows = [sumHeader];
+  matVals.forEach(function(row) {
+    var code = String(row[0] || '').trim();
+    if (code) {
+      var r = sumRows.length + 1;
+      sumRows.push([
+        code,
+        String(row[1] || '').trim(),
+        String(row[2] || 'kg').trim(),
+        '=IFERROR(VLOOKUP(A' + r + ', Master_Materials!$A:$E, 4, FALSE), 0)',
+        '=IFERROR(SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A' + r + ', Stock_Transactions!$B:$B, "Receive"), 0)',
+        '=IFERROR(SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A' + r + ', Stock_Transactions!$B:$B, "Actual Usage"), 0)',
+        '=IFERROR(SUMPRODUCT(SUMIFS(Daily_Production!$C:$C, Daily_Production!$B:$B, FILTER(BOM_Recipe!$A:$A, BOM_Recipe!$C:$C = A' + r + ')), FILTER(BOM_Recipe!$D:$D, BOM_Recipe!$C:$C = A' + r + ')), 0)',
+        '=D' + r + ' + E' + r + ' - F' + r,
+        '=F' + r + ' - G' + r,
+        '=IF(A' + r + '="", "", IF(H' + r + ' <= IFERROR(VLOOKUP(A' + r + ', Master_Materials!$A:$E, 5, FALSE), 0), "⚠️ ใกล้หมด", "ปกติ"))'
+      ]);
+    }
+  });
+  if (sumRows.length > 1) {
+    sumSheet.getRange(1, 1, sumRows.length, 10).setValues(sumRows);
+    sumSheet.getRange(1, 1, 1, 10).setBackground('#0f172a').setFontColor('#ffffff').setFontWeight('bold');
+  }
+}
+
 function doPost(e) {
   try {
     var raw = e.postData.contents;

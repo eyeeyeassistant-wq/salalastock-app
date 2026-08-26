@@ -168,26 +168,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const tabItems: TabItem[] = [
     {
-      id: 'staff-portal' as ActiveTab,
-      name: 'พอร์ทัลพนักงาน',
-      sub: 'บันทึกประจำวัน',
-      icon: UserCheck,
-      color: 'text-emerald-400',
-      badge: null,
-      adminOnly: false,
-    },
-    {
-      id: 'stock-count' as ActiveTab,
-      name: 'ตรวจนับสต็อกสิ้นเดือน',
-      sub: 'Physical Stock Count',
-      icon: ClipboardCheck,
-      color: 'text-indigo-400',
-      badge: null,
-      adminOnly: false,
-    },
-    {
       id: 'dashboard' as ActiveTab,
-      name: 'แดชบอร์ดสรุปรายเดือน',
+      name: 'แดชบอร์ดสรุปภาพรวม',
       sub: 'Monthly Dashboard',
       icon: BarChart3,
       color: 'text-blue-400',
@@ -214,10 +196,19 @@ export const Navbar: React.FC<NavbarProps> = ({
     },
     {
       id: 'summary' as ActiveTab,
-      name: '3. สรุปสต็อก & ผลต่าง',
+      name: '3. สรุปสต็อก & Variance',
       sub: 'Variance Analysis',
       icon: Layers,
       color: 'text-indigo-400',
+      badge: null,
+      adminOnly: false,
+    },
+    {
+      id: 'stock-count' as ActiveTab,
+      name: '4. ตรวจนับสต็อกสิ้นเดือน',
+      sub: 'Physical Stock Count',
+      icon: ClipboardCheck,
+      color: 'text-emerald-400',
       badge: null,
       adminOnly: false,
     },
@@ -225,7 +216,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       ? [
           {
             id: 'materials' as ActiveTab,
-            name: '4. ทะเบียนวัตถุดิบ',
+            name: '5. ทะเบียนวัตถุดิบ',
             sub: 'Master Materials',
             icon: Package,
             color: 'text-amber-400',
@@ -234,7 +225,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           },
           {
             id: 'recipes' as ActiveTab,
-            name: '5. สูตรมาตรฐานต่อชิ้น',
+            name: '6. สูตรมาตรฐานต่อชิ้น',
             sub: 'BOM Recipe',
             icon: Sparkles,
             color: 'text-amber-400',
@@ -287,7 +278,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={() => {
                   setUserRole('staff');
                   if (activeTab === 'materials' || activeTab === 'recipes' || activeTab === 'formulas') {
-                    setActiveTab('staff-portal');
+                    setActiveTab('dashboard');
                   }
                 }}
                 id="btn-role-staff"

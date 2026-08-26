@@ -7,6 +7,7 @@ import {
   StockTransaction,
   MonthlyStockCountRecord,
 } from '../types/stock';
+import { exportMonthlySummaryToExcel } from '../services/excelExport';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -20,6 +21,7 @@ import {
   Download,
   HelpCircle,
   ClipboardCheck,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 interface MonthlySummaryTabProps {
@@ -175,6 +177,15 @@ export const MonthlySummaryTab: React.FC<MonthlySummaryTabProps> = ({
               <span>เช็คสต็อกจริงสิ้นเดือน</span>
             </button>
           )}
+
+          <button
+            onClick={() => exportMonthlySummaryToExcel(filteredSummaries, 'Monthly_Summary')}
+            title="ดาวน์โหลดตารางสรุปสต็อกและ Variance เป็นไฟล์ Excel (.xlsx)"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 shadow-xs transition-colors"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+            <span>ดาวน์โหลด Excel</span>
+          </button>
 
           <button
             onClick={onOpenFormulaGuide}

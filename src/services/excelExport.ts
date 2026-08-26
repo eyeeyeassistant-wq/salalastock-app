@@ -5,6 +5,7 @@ import {
   DailyProduction,
   StockTransaction,
   MonthlyStockCountRecord,
+  MonthlyStockSummary,
 } from '../types/stock';
 
 export interface FullStockData {
@@ -13,6 +14,39 @@ export interface FullStockData {
   productions: DailyProduction[];
   transactions: StockTransaction[];
   stockCountRecords?: MonthlyStockCountRecord[];
+}
+
+/**
+ * Export Monthly Stock Summary and Variance directly to a clean formatted Excel (.xlsx) file
+ */
+export function exportMonthlySummaryToExcel(
+  summaries: MonthlyStockSummary[],
+  periodLabel: string = 'All_Time'
+) {
+  const wb = XLSX.utils.book_new();
+
+  const rows = summaries.map((s) => ({
+    'รหัสวัตถุดิบ (RM_Code)': s.RM_Code,
+    'ชื่อวัตถุดิบ (RM_Name)': s.RM_Name,
+    'หน่วยนับ (Unit)': s.Unit,
+    'ยอดยกมา (Opening_Stock)': s.Opening_Stock,
+    'รับเข้าทั้งหมด (Total_Receive)': s.Total_Receive,
+    'เบิกใช้จริง (Actual_Usage)': s.Actual_Usage,
+    'ควรใช้ตามสูตร (Expected_Usage)': s.Expected_Usage,
+    'คงเหลือสิ้นงวด (Ending_Stock)': s.Ending_Stock,
+    'ผลต่าง (Variance)': s.Variance,
+    '% ผลต่าง (% Variance)': `${s.variancePercentage}%`,
+    'สถานะสต็อก (Stock_Status)': s.Stock_Status,
+    'ยอดนับจริง (Physical_Count)': s.Physical_Count !== undefined ? s.Physical_Count : '-',
+    'ผลต่างตรวจนับ (Physical_Variance)': s.Physical_Variance !== undefined ? s.Physical_Variance : '-',
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws, 'Monthly_Stock_Summary');
+
+  const cleanPeriod = periodLabel.replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_');
+  const fileName = `Monthly_Stock_Summary_${cleanPeriod}.xlsx`;
+  XLSX.writeFile(wb, fileName);
 }
 
 export function exportFullDataToExcel(data: FullStockData, fileName = 'Stock_Tracking_Backup.xlsx') {

@@ -51,7 +51,6 @@ import {
 import { Navbar } from './components/Navbar';
 import { OverviewCards } from './components/OverviewCards';
 import { MonthlyDashboardTab } from './components/MonthlyDashboardTab';
-import { StaffPortalTab } from './components/StaffPortalTab';
 import { MonthlySummaryTab } from './components/MonthlySummaryTab';
 import { DailyProductionTab } from './components/DailyProductionTab';
 import { StockTransactionsTab } from './components/StockTransactionsTab';
@@ -76,7 +75,7 @@ import {
 
 export default function App() {
   const [userRole, setUserRole] = useState<UserRole>('staff');
-  const [activeTab, setActiveTab] = useState<ActiveTab>('staff-portal');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [activeFilter, setActiveFilter] = useState<'all' | 'lowStock' | 'overused'>('all');
 
   // Admin Auth Gate State
@@ -795,7 +794,7 @@ export default function App() {
     sessionStorage.removeItem('stock_admin_auth');
     setUserRole('staff');
     if (activeTab === 'materials' || activeTab === 'recipes' || activeTab === 'formulas') {
-      setActiveTab('staff-portal');
+      setActiveTab('dashboard');
     }
     showNotification('🔒 ล็อคสิทธิ์ Admin และกลับสู่โหมดพนักงาน');
   };
@@ -844,7 +843,7 @@ export default function App() {
     sessionStorage.removeItem('stock_admin_auth');
     setUserRole('staff');
     if (activeTab === 'materials' || activeTab === 'recipes' || activeTab === 'formulas') {
-      setActiveTab('staff-portal');
+      setActiveTab('dashboard');
     }
     showNotification('ออกจากระบบเรียบร้อย');
   };
@@ -1431,8 +1430,8 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* KPI Overview Cards (hidden on dashboard and staff-portal to keep views clean) */}
-        {activeTab !== 'dashboard' && activeTab !== 'staff-portal' && (
+        {/* KPI Overview Cards (hidden on dashboard to keep views clean) */}
+        {activeTab !== 'dashboard' && (
           <OverviewCards
             summaries={summaries}
             productions={productions}
@@ -1460,43 +1459,6 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'staff-portal' && (
-          <StaffPortalTab
-            materials={materials}
-            recipes={recipes}
-            productions={productions}
-            transactions={transactions}
-            stockCountRecords={stockCountRecords}
-            user={user}
-            spreadsheetId={spreadsheetId}
-            spreadsheetUrl={spreadsheetUrl}
-            onSignIn={handleSignIn}
-            onOpenSyncModal={() => {
-              if (!isAdminAuthenticated) {
-                handleRequestAdminAuth();
-              } else {
-                setIsSyncModalOpen(true);
-              }
-            }}
-            onOpenNewProdModal={() => {
-              setEditingProduction(null);
-              setIsNewProdModalOpen(true);
-            }}
-            onOpenNewTxModal={(type = 'Receive') => {
-              setEditingTransaction(null);
-              setInitialTxType(type);
-              setIsNewTxModalOpen(true);
-            }}
-            onOpenOpeningStockModal={() => setIsOpeningStockModalOpen(true)}
-            onOpenStockCountModal={() => setActiveTab('stock-count')}
-            onViewMaterialDetail={(code) => setSelectedMaterialDetail(code)}
-            onEditProduction={handleEditProduction}
-            onDeleteProduction={handleDeleteProduction}
-            onEditTransaction={handleEditTransaction}
-            onDeleteTransaction={handleDeleteTransaction}
-          />
-        )}
-
         {activeTab === 'stock-count' && (
           <PhysicalStockCountTab
             materials={materials}
@@ -1505,7 +1467,7 @@ export default function App() {
             transactions={transactions}
             stockCountRecords={stockCountRecords}
             onSaveStockCount={handleSaveStockCount}
-            onBackToStaffPortal={() => setActiveTab('staff-portal')}
+            onBackToDashboard={() => setActiveTab('dashboard')}
             onRestoreSampleData={handleRestoreSampleData}
           />
         )}

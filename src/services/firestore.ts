@@ -62,8 +62,12 @@ export async function loadCloudData(): Promise<AppCloudData | null> {
       return snap.data() as AppCloudData;
     }
     return null;
-  } catch (err) {
-    console.error('Error loading data from Firestore:', err);
+  } catch (err: any) {
+    if (err?.message?.includes('the client is offline') || err?.code === 'unavailable') {
+      console.info('Firestore offline mode: using local cache/storage data.');
+    } else {
+      console.warn('Firestore load data note:', err?.message || err);
+    }
     return null;
   }
 }
@@ -77,8 +81,12 @@ export async function loadCloudSettings(): Promise<AppCloudSettings | null> {
       return snap.data() as AppCloudSettings;
     }
     return null;
-  } catch (err) {
-    console.error('Error loading settings from Firestore:', err);
+  } catch (err: any) {
+    if (err?.message?.includes('the client is offline') || err?.code === 'unavailable') {
+      console.info('Firestore offline mode: using local cache/storage settings.');
+    } else {
+      console.warn('Firestore load settings note:', err?.message || err);
+    }
     return null;
   }
 }
@@ -108,8 +116,12 @@ export async function saveCloudData(data: AppCloudData) {
       },
       { merge: true }
     );
-  } catch (err) {
-    console.error('Error saving data to Firestore:', err);
+  } catch (err: any) {
+    if (err?.message?.includes('the client is offline') || err?.code === 'unavailable') {
+      console.info('Firestore offline: data cached locally until network reconnects.');
+    } else {
+      console.warn('Firestore save data notice:', err?.message || err);
+    }
   }
 }
 
@@ -125,8 +137,12 @@ export async function saveCloudSettings(settings: Partial<AppCloudSettings>) {
       },
       { merge: true }
     );
-  } catch (err) {
-    console.error('Error saving settings to Firestore:', err);
+  } catch (err: any) {
+    if (err?.message?.includes('the client is offline') || err?.code === 'unavailable') {
+      console.info('Firestore offline: settings cached locally.');
+    } else {
+      console.warn('Firestore save settings notice:', err?.message || err);
+    }
   }
 }
 

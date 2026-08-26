@@ -206,7 +206,9 @@ export const MasterMaterialsTab: React.FC<MasterMaterialsTabProps> = ({
               <input
                 type="number"
                 step="any"
+                inputMode="decimal"
                 value={newOpening}
+                onFocus={(e) => e.target.select()}
                 onChange={(e) => setNewOpening(parseFloat(e.target.value) || 0)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs bg-white font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -218,7 +220,9 @@ export const MasterMaterialsTab: React.FC<MasterMaterialsTabProps> = ({
               <input
                 type="number"
                 step="any"
+                inputMode="decimal"
                 value={newSafety}
+                onFocus={(e) => e.target.select()}
                 onChange={(e) => setNewSafety(parseFloat(e.target.value) || 0)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs bg-white font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -328,7 +332,9 @@ export const MasterMaterialsTab: React.FC<MasterMaterialsTabProps> = ({
                         <input
                           type="number"
                           step="any"
+                          inputMode="decimal"
                           value={editForm?.Opening_Stock || 0}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) =>
                             setEditForm((prev) =>
                               prev
@@ -350,7 +356,9 @@ export const MasterMaterialsTab: React.FC<MasterMaterialsTabProps> = ({
                         <input
                           type="number"
                           step="any"
+                          inputMode="decimal"
                           value={editForm?.Safety_Stock || 0}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) =>
                             setEditForm((prev) =>
                               prev

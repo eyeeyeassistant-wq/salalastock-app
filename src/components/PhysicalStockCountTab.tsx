@@ -37,7 +37,7 @@ interface PhysicalStockCountTabProps {
     record: MonthlyStockCountRecord,
     applyAsOpeningStock: boolean
   ) => void;
-  onBackToStaffPortal: () => void;
+  onBackToDashboard?: () => void;
   onRestoreSampleData?: () => void;
 }
 
@@ -48,7 +48,7 @@ export const PhysicalStockCountTab: React.FC<PhysicalStockCountTabProps> = ({
   transactions = [],
   stockCountRecords = [],
   onSaveStockCount,
-  onBackToStaffPortal,
+  onBackToDashboard,
   onRestoreSampleData,
 }) => {
   const availableMonths = useMemo(() => {
@@ -117,7 +117,7 @@ export const PhysicalStockCountTab: React.FC<PhysicalStockCountTabProps> = ({
       setCounts(countMap);
       setItemNotes({});
     }
-  }, [selectedMonth, existingRecord, systemSummaries]);
+  }, [selectedMonth, existingRecord?.Month]);
 
   const handleCountChange = (rmCode: string, val: string) => {
     setCounts((prev) => ({
@@ -220,15 +220,17 @@ export const PhysicalStockCountTab: React.FC<PhysicalStockCountTabProps> = ({
       {/* Top Breadcrumb / Back Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-xs">
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onBackToStaffPortal}
-            id="btn-back-to-staff"
-            className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors flex items-center gap-1.5 text-xs font-semibold"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="hidden sm:inline">กลับหน้าหลักพนักงาน</span>
-          </button>
+          {onBackToDashboard && (
+            <button
+              type="button"
+              onClick={onBackToDashboard}
+              id="btn-back-to-dashboard"
+              className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors flex items-center gap-1.5 text-xs font-semibold"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">กลับหน้าแดชบอร์ด</span>
+            </button>
+          )}
           <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
             <ClipboardCheck className="w-5 h-5" />
           </div>
@@ -489,11 +491,12 @@ export const PhysicalStockCountTab: React.FC<PhysicalStockCountTabProps> = ({
                   {/* Col 3: Actual Physical Count Input */}
                   <div className="col-span-3 flex items-center justify-end gap-1.5">
                     <input
-                      type="number"
-                      step="any"
-                      min="0"
+                      type="text"
+                      inputMode="decimal"
                       value={countedVal}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => handleCountChange(s.RM_Code, e.target.value)}
+                      placeholder="0"
                       className={`w-32 px-3 py-2 rounded-xl border text-sm font-mono font-bold text-right focus:outline-none focus:ring-2 ${
                         isShortage
                           ? 'border-rose-300 bg-rose-50/80 text-rose-900 focus:ring-rose-500'
@@ -558,13 +561,15 @@ export const PhysicalStockCountTab: React.FC<PhysicalStockCountTabProps> = ({
           </label>
 
           <div className="flex items-center gap-3 justify-end shrink-0">
-            <button
-              type="button"
-              onClick={onBackToStaffPortal}
-              className="px-5 py-3 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200 transition-colors"
-            >
-              ยกเลิก
-            </button>
+            {onBackToDashboard && (
+              <button
+                type="button"
+                onClick={onBackToDashboard}
+                className="px-5 py-3 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200 transition-colors"
+              >
+                ยกเลิก
+              </button>
+            )}
 
             <button
               type="submit"

@@ -37,6 +37,17 @@
   background: #94a3b8;
 }
 
+/* Hide native browser up/down number spinners so users can type cleanly */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* Dark variant scrollbar for dark headers */
 .dark-scrollbar::-webkit-scrollbar {
   height: 5px;
