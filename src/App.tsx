@@ -88,54 +88,50 @@ export default function App() {
   // Core Data State (Saved to Cloud Firestore & localStorage)
   const [materials, setMaterials] = useState<MasterMaterial[]>(() => {
     const saved = localStorage.getItem('stock_materials');
-    const initialized = localStorage.getItem('stock_data_initialized');
     if (saved !== null) {
       try {
         return JSON.parse(saved);
       } catch (e) {
-        return initialized === 'true' ? [] : INITIAL_MATERIALS;
+        return [];
       }
     }
-    return initialized === 'true' ? [] : INITIAL_MATERIALS;
+    return [];
   });
 
   const [recipes, setRecipes] = useState<BOMRecipe[]>(() => {
     const saved = localStorage.getItem('stock_recipes');
-    const initialized = localStorage.getItem('stock_data_initialized');
     if (saved !== null) {
       try {
         return JSON.parse(saved);
       } catch (e) {
-        return initialized === 'true' ? [] : INITIAL_RECIPES;
+        return [];
       }
     }
-    return initialized === 'true' ? [] : INITIAL_RECIPES;
+    return [];
   });
 
   const [productions, setProductions] = useState<DailyProduction[]>(() => {
     const saved = localStorage.getItem('stock_productions');
-    const initialized = localStorage.getItem('stock_data_initialized');
     if (saved !== null) {
       try {
         return JSON.parse(saved);
       } catch (e) {
-        return initialized === 'true' ? [] : INITIAL_DAILY_PRODUCTION;
+        return [];
       }
     }
-    return initialized === 'true' ? [] : INITIAL_DAILY_PRODUCTION;
+    return [];
   });
 
   const [transactions, setTransactions] = useState<StockTransaction[]>(() => {
     const saved = localStorage.getItem('stock_transactions');
-    const initialized = localStorage.getItem('stock_data_initialized');
     if (saved !== null) {
       try {
         return JSON.parse(saved);
       } catch (e) {
-        return initialized === 'true' ? [] : INITIAL_TRANSACTIONS;
+        return [];
       }
     }
-    return initialized === 'true' ? [] : INITIAL_TRANSACTIONS;
+    return [];
   });
 
   const [stockCountRecords, setStockCountRecords] = useState<MonthlyStockCountRecord[]>(() => {
@@ -498,13 +494,13 @@ export default function App() {
           }
           localStorage.setItem('stock_data_initialized', 'true');
         } else {
-          // Cloud database is empty (first boot), seed with baseline dataset
+          // Cloud database is empty (first boot), keep clean empty state
           saveCloudDataDebounced({
-            materials,
-            recipes,
-            productions,
-            transactions,
-            stockCountRecords,
+            materials: [],
+            recipes: [],
+            productions: [],
+            transactions: [],
+            stockCountRecords: [],
             isInitialized: true,
           }, 0);
           localStorage.setItem('stock_data_initialized', 'true');
