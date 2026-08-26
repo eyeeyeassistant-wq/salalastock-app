@@ -168,8 +168,11 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
+  // Debounce ref for live Google Sheets background syncing
+  const autoSyncTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // Background Cloud Firestore and Google Sheets Auto-Sync Trigger
-  const triggerAutoSync = async (overrides?: {
+  const triggerAutoSync = (overrides?: {
     materials?: MasterMaterial[];
     recipes?: BOMRecipe[];
     productions?: DailyProduction[];
@@ -192,48 +195,58 @@ export default function App() {
       isInitialized: true,
     });
 
-    // 2. Sync to Google Sheets if configured
-    const isAuto = localStorage.getItem('stock_auto_sync') !== 'false';
-    if (!isAuto) return;
-
+    // 2. Real-time automatic sync to Google Sheets
     const currentWebhook = getEffectiveWebhookUrl() || webhookUrl || localStorage.getItem('stock_webhook_url');
     const currentSheetId = spreadsheetId || localStorage.getItem('stock_spreadsheet_id');
 
     if (!currentWebhook && !currentSheetId) return;
 
-    try {
-      if (currentWebhook) {
-        await syncViaWebhook(currentWebhook, {
-          materials: curMats,
-          recipes: curRecipes,
-          productions: curProds,
-          transactions: curTxs,
-          monthlyStockCounts: curCounts,
-        }, 'syncAll');
-        const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
-        setLastSyncTime(nowStr);
-        localStorage.setItem('stock_last_sync', nowStr);
-        saveCloudSettings({ lastSyncTime: nowStr });
-      } else if (currentSheetId) {
-        const currentToken = token || (await getAccessToken());
-        if (currentToken) {
-          await initializeSheetDataAndFormulas(
-            currentToken,
-            currentSheetId,
-            curMats,
-            curRecipes,
-            curProds,
-            curTxs
+    if (autoSyncTimerRef.current) {
+      clearTimeout(autoSyncTimerRef.current);
+    }
+
+    autoSyncTimerRef.current = setTimeout(async () => {
+      try {
+        setIsSyncing(true);
+        if (currentWebhook) {
+          await syncViaWebhook(
+            currentWebhook,
+            {
+              materials: curMats,
+              recipes: curRecipes,
+              productions: curProds,
+              transactions: curTxs,
+              monthlyStockCounts: curCounts,
+            },
+            'syncAll'
           );
           const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
           setLastSyncTime(nowStr);
           localStorage.setItem('stock_last_sync', nowStr);
           saveCloudSettings({ lastSyncTime: nowStr });
+        } else if (currentSheetId) {
+          const currentToken = token || (await getAccessToken());
+          if (currentToken) {
+            await initializeSheetDataAndFormulas(
+              currentToken,
+              currentSheetId,
+              curMats,
+              curRecipes,
+              curProds,
+              curTxs
+            );
+            const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+            setLastSyncTime(nowStr);
+            localStorage.setItem('stock_last_sync', nowStr);
+            saveCloudSettings({ lastSyncTime: nowStr });
+          }
         }
+      } catch (err) {
+        console.warn('Auto-sync background update notice:', err);
+      } finally {
+        setIsSyncing(false);
       }
-    } catch (err) {
-      console.warn('Auto-sync background update notice:', err);
-    }
+    }, 400);
   };
 
   // Modal Visibility State
@@ -438,7 +451,7 @@ export default function App() {
   // Track initial load completion to prevent premature blank overwriting
   const isInitialLoadDoneRef = useRef(false);
 
-  // Save to localStorage & Cloud whenever core data changes (after initial startup load is complete)
+  // Save to localStorage & Cloud & auto-sync to Google Sheets whenever core data changes (after initial startup load is complete)
   useEffect(() => {
     if (!isInitialLoadDoneRef.current) return;
 
@@ -459,15 +472,24 @@ export default function App() {
       },
       350
     );
+
+    // Continuous automatic background sync to Google Sheets
+    triggerAutoSync({
+      materials,
+      recipes,
+      productions,
+      transactions,
+      stockCountRecords,
+    });
   }, [materials, recipes, productions, transactions, stockCountRecords]);
 
-  // Load persistent data & settings from Firestore Cloud Database & Google Sheet on startup
+  // Load persistent data & settings from Google Sheet & Cloud Database on startup
   useEffect(() => {
     testFirestoreConnection();
 
     let isSubscribed = true;
 
-    // 1. Initial fetch from Cloud Firestore & fallback to Google Sheets
+    // 1. Initial fetch: Always pull latest real-time single-source-of-truth from Google Sheets first!
     (async () => {
       try {
         const [cloudData, cloudSettings] = await Promise.all([
@@ -484,7 +506,53 @@ export default function App() {
         let loadedCounts = stockCountRecords;
         let hasData = false;
 
-        if (cloudData && cloudData.isInitialized) {
+        // Resolve webhook configuration
+        const targetWebhook =
+          (DEFAULT_WEBHOOK_URL && DEFAULT_WEBHOOK_URL.trim().startsWith('http') ? DEFAULT_WEBHOOK_URL.trim() : null) ||
+          cloudSettings?.webhookUrl ||
+          localStorage.getItem('stock_webhook_url');
+
+        // Always check and load live data from Google Sheets first
+        if (targetWebhook) {
+          try {
+            console.log('🔄 Live auto-fetching single source of truth from Google Sheet on startup...');
+            const sheetData = await fetchDataFromGoogleSheet(targetWebhook);
+            if (
+              sheetData &&
+              ((sheetData.materials && sheetData.materials.length > 0) ||
+                (sheetData.productions && sheetData.productions.length > 0) ||
+                (sheetData.transactions && sheetData.transactions.length > 0))
+            ) {
+              if (sheetData.materials && sheetData.materials.length > 0) {
+                loadedMats = sheetData.materials;
+                setMaterials(loadedMats);
+              }
+              if (sheetData.recipes && sheetData.recipes.length > 0) {
+                loadedRecipes = sheetData.recipes;
+                setRecipes(loadedRecipes);
+              }
+              if (sheetData.productions && sheetData.productions.length > 0) {
+                loadedProds = sheetData.productions;
+                setProductions(loadedProds);
+              }
+              if (sheetData.transactions && sheetData.transactions.length > 0) {
+                loadedTxs = sheetData.transactions;
+                setTransactions(loadedTxs);
+              }
+              if (sheetData.monthlyStockCounts && sheetData.monthlyStockCounts.length > 0) {
+                loadedCounts = sheetData.monthlyStockCounts;
+                setStockCountRecords(loadedCounts);
+              }
+              hasData = true;
+              showNotification('🟢 โหลดข้อมูลเรียลไทม์จาก Google Sheets สำเร็จ');
+            }
+          } catch (e) {
+            console.warn('Auto-fetch from Google Sheet notice on startup:', e);
+          }
+        }
+
+        // If Google Sheets had no data yet, load from Cloud Firestore
+        if (!hasData && cloudData && cloudData.isInitialized) {
           const hasCloudItems =
             (cloudData.materials && cloudData.materials.length > 0) ||
             (cloudData.productions && cloudData.productions.length > 0) ||
@@ -506,7 +574,7 @@ export default function App() {
           }
         }
 
-        // If cloud was empty, check if localStorage has unsynced data
+        // If still empty, check if localStorage has unsynced data
         if (!hasData) {
           const localMats = localStorage.getItem('stock_materials');
           const localTxs = localStorage.getItem('stock_transactions');
@@ -557,51 +625,6 @@ export default function App() {
             } catch (e) {
               console.warn('LocalStorage parse notice:', e);
             }
-          }
-        }
-
-        // Resolve webhook configuration
-        const targetWebhook =
-          (DEFAULT_WEBHOOK_URL && DEFAULT_WEBHOOK_URL.trim().startsWith('http') ? DEFAULT_WEBHOOK_URL.trim() : null) ||
-          cloudSettings?.webhookUrl ||
-          localStorage.getItem('stock_webhook_url');
-
-        // If still empty or user reopened the page, automatically pull from Google Sheet!
-        if (!hasData && targetWebhook) {
-          try {
-            console.log('🔄 Auto-fetching data from Google Sheet Webhook on startup...');
-            const sheetData = await fetchDataFromGoogleSheet(targetWebhook);
-            if (
-              sheetData &&
-              ((sheetData.materials && sheetData.materials.length > 0) ||
-                (sheetData.productions && sheetData.productions.length > 0) ||
-                (sheetData.transactions && sheetData.transactions.length > 0))
-            ) {
-              if (sheetData.materials && sheetData.materials.length > 0) {
-                loadedMats = sheetData.materials;
-                setMaterials(loadedMats);
-              }
-              if (sheetData.recipes && sheetData.recipes.length > 0) {
-                loadedRecipes = sheetData.recipes;
-                setRecipes(loadedRecipes);
-              }
-              if (sheetData.productions && sheetData.productions.length > 0) {
-                loadedProds = sheetData.productions;
-                setProductions(loadedProds);
-              }
-              if (sheetData.transactions && sheetData.transactions.length > 0) {
-                loadedTxs = sheetData.transactions;
-                setTransactions(loadedTxs);
-              }
-              if (sheetData.monthlyStockCounts && sheetData.monthlyStockCounts.length > 0) {
-                loadedCounts = sheetData.monthlyStockCounts;
-                setStockCountRecords(loadedCounts);
-              }
-              hasData = true;
-              showNotification('📥 ดึงข้อมูลล่าสุดจาก Google Sheets สำเร็จเรียบร้อย');
-            }
-          } catch (e) {
-            console.warn('Auto-fetch from Google Sheet notice:', e);
           }
         }
 

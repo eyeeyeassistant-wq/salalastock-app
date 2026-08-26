@@ -90,7 +90,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [startX, setStartX] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [showConfirmPullModal, setShowConfirmPullModal] = useState(false);
 
   // Check scroll boundary
   const updateScrollState = () => {
@@ -345,37 +344,28 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="font-medium text-[11px]">Cloud Database</span>
             </div>
 
-            {/* Google Sheets Actions Group - Clearly Separated to Prevent Mistakes */}
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              {/* Button 1: ส่งข้อมูลขึ้น Sheets (Upload/Sync - Main Action) */}
-              <button
-                onClick={onSyncNow}
-                disabled={isSyncing}
-                id="btn-sync-to-sheets"
-                title="กดเพื่อส่งข้อมูลทั้งหมดจากหน้านี้ไปบันทึกและอัปเดตลง Google Sheets"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm shadow-emerald-950/40 border border-emerald-400/40 transition-all touch-manipulation min-h-[36px] disabled:opacity-50"
-              >
-                {isSyncing ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-200 shrink-0" />
-                ) : (
-                  <UploadCloud className="w-3.5 h-3.5 text-emerald-100 shrink-0" />
-                )}
-                <span className="font-semibold">
-                  {isSyncing ? 'กำลังส่งข้อมูล...' : 'ส่งขึ้น Sheets'}
+            {/* Live Google Sheets Auto-Sync Status & Controls */}
+            <div className="flex items-center gap-1.5 sm:gap-2 bg-emerald-950/80 border border-emerald-500/50 rounded-lg px-2.5 sm:px-3 py-1 text-xs text-emerald-200 min-h-[36px] shadow-sm shadow-emerald-950/40">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${isSyncing ? 'bg-amber-400 animate-ping' : 'bg-emerald-400 animate-pulse'}`}></span>
+              <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />
+              <div className="flex flex-col text-left pr-1">
+                <span className="font-bold text-xs text-emerald-100 flex items-center gap-1 leading-tight">
+                  {isSyncing ? 'กำลังบันทึกลงชีท...' : 'ซิงค์ Sheets อัตโนมัติ'}
                 </span>
-              </button>
+                <span className="text-[10px] text-emerald-300/80 hidden sm:inline leading-tight">
+                  กรอก/แก้ไข เข้าชีททันที
+                </span>
+              </div>
 
-              {/* Button 2: ดึงข้อมูลจาก Sheets (Pull/Download - Safety Protected) */}
+              {/* Refresh / Re-fetch from Sheets button */}
               {onPullFromSheet && (
                 <button
-                  onClick={() => setShowConfirmPullModal(true)}
+                  onClick={onPullFromSheet}
                   disabled={isSyncing}
-                  id="btn-pull-from-sheets"
-                  title="ดึงข้อมูลจาก Google Sheets ลงมาอัปเดตบนหน้าเว็บ (จะมีหน้าต่างถามยืนยันก่อนเสมอเพื่อความปลอดภัย)"
-                  className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 hover:border-slate-500 transition-all touch-manipulation min-h-[36px] disabled:opacity-50"
+                  title="รีเฟรช / ดึงข้อมูลล่าสุดจาก Google Sheets อีกครั้ง"
+                  className="hover:bg-emerald-900/80 p-1.5 rounded-md text-emerald-300 hover:text-white transition-colors"
                 >
-                  <DownloadCloud className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                  <span className="hidden sm:inline">ดึงจาก Sheets</span>
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
                 </button>
               )}
 
@@ -386,9 +376,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                   target="_blank"
                   rel="noreferrer"
                   title="เปิดดูไฟล์ Google Sheets ในแท็บใหม่"
-                  className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 border border-slate-700 transition-colors"
+                  className="hover:bg-emerald-900/80 p-1.5 rounded-md text-emerald-300 hover:text-white transition-colors"
                 >
-                  <ExternalLink className="w-4 h-4" />
+                  <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               )}
             </div>
@@ -501,53 +491,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Safety Confirmation Modal for Pulling from Google Sheets */}
-      {showConfirmPullModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-left">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-white">ยืนยันการดึงข้อมูลจาก Google Sheets</h3>
-                <p className="text-xs text-slate-400">Pull & Sync Data to Web</p>
-              </div>
-            </div>
-
-            <div className="bg-slate-800/80 rounded-xl p-3.5 border border-slate-700/80 text-xs text-slate-300 space-y-2">
-              <p>
-                ระบบจะดาวน์โหลดข้อมูลล่าสุดจาก <span className="text-emerald-400 font-semibold">Google Sheets</span> มาอัปเดตบนหน้าเว็บนี้
-              </p>
-              <div className="p-2.5 rounded-lg bg-amber-950/40 border border-amber-800/40 text-amber-200 text-[11px] leading-relaxed">
-                ⚠️ <span className="font-semibold">ข้อควรระวัง:</span> หากคุณมีข้อมูลที่เพิ่งกรอกบนหน้าเว็บและยังไม่ได้กด <strong>"ส่งขึ้น Sheets"</strong> ข้อมูลบนหน้าเว็บจะถูกเขียนทับด้วยข้อมูลจากตาราง Google Sheet
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowConfirmPullModal(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl border border-slate-700 transition-colors"
-              >
-                ยกเลิก
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowConfirmPullModal(false);
-                  if (onPullFromSheet) onPullFromSheet();
-                }}
-                className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-md shadow-blue-900/30 flex items-center gap-1.5 transition-all"
-              >
-                <DownloadCloud className="w-3.5 h-3.5" />
-                <span>ยืนยันดึงข้อมูล</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </header>
   );
 };
