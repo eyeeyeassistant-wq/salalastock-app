@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ExternalLink,
   UploadCloud,
+  DownloadCloud,
   Unlink,
   X,
   Sparkles,
@@ -46,6 +47,7 @@ interface GoogleSheetsSyncModalProps {
   onCreateNewSheet: () => Promise<void>;
   onLinkExistingSheet: (sheetId: string) => Promise<void>;
   onPushAllToSheet: () => Promise<void>;
+  onPullFromSheet?: () => Promise<void>;
   onDisconnectSheet: () => void;
   materials: MasterMaterial[];
   recipes: BOMRecipe[];
@@ -75,6 +77,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
   onCreateNewSheet,
   onLinkExistingSheet,
   onPushAllToSheet,
+  onPullFromSheet,
   onDisconnectSheet,
   materials,
   recipes,
@@ -294,8 +297,8 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
               </button>
             </div>
 
-            {/* Auto-Sync Toggle */}
-            <div className="pt-2 border-t border-emerald-200/80 flex items-center justify-between">
+            {/* Auto-Sync Toggle & Action Buttons */}
+            <div className="pt-2 border-t border-emerald-200/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
               <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-emerald-900">
                 <input
                   type="checkbox"
@@ -309,14 +312,29 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                 </span>
               </label>
 
-              <button
-                onClick={onPushAllToSheet}
-                disabled={isSyncing}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs transition-colors"
-              >
-                <UploadCloud className="w-3.5 h-3.5" />
-                <span>{isSyncing ? 'กำลังส่งข้อมูล...' : 'ส่งข้อมูลขึ้นชีททันที'}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {onPullFromSheet && (
+                  <button
+                    type="button"
+                    onClick={onPullFromSheet}
+                    disabled={isSyncing}
+                    title="ดึงข้อมูลจาก Google Sheet เข้ามาแสดงและบันทึกลงในเว็บ"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white shadow-xs transition-colors"
+                  >
+                    <DownloadCloud className="w-3.5 h-3.5" />
+                    <span>ดึงข้อมูลจาก Sheets</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onPushAllToSheet}
+                  disabled={isSyncing}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs transition-colors"
+                >
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  <span>{isSyncing ? 'กำลังส่งข้อมูล...' : 'ส่งข้อมูลขึ้นชีททันที'}</span>
+                </button>
+              </div>
             </div>
           </div>
         )}

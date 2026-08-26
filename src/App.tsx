@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User } from 'firebase/auth';
 import { Shield, Lock } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -34,6 +34,7 @@ import {
   appendTransactionToSheet,
   appendProductionToSheet,
   syncViaWebhook,
+  fetchDataFromGoogleSheet,
 } from './services/googleSheets';
 import {
   testFirestoreConnection,
@@ -434,34 +435,39 @@ export default function App() {
     triggerAutoSync({ materials: nextMats });
   };
 
-  // Save to localStorage & Cloud whenever core data changes
+  // Track initial load completion to prevent premature blank overwriting
+  const isInitialLoadDoneRef = useRef(false);
+
+  // Save to localStorage & Cloud whenever core data changes (after initial startup load is complete)
   useEffect(() => {
+    if (!isInitialLoadDoneRef.current) return;
+
     localStorage.setItem('stock_materials', JSON.stringify(materials));
-  }, [materials]);
-
-  useEffect(() => {
     localStorage.setItem('stock_recipes', JSON.stringify(recipes));
-  }, [recipes]);
-
-  useEffect(() => {
     localStorage.setItem('stock_productions', JSON.stringify(productions));
-  }, [productions]);
-
-  useEffect(() => {
     localStorage.setItem('stock_transactions', JSON.stringify(transactions));
-  }, [transactions]);
-
-  useEffect(() => {
     localStorage.setItem('stock_count_records', JSON.stringify(stockCountRecords));
-  }, [stockCountRecords]);
 
-  // Load persistent data & settings from Firestore Cloud Database on startup
+    saveCloudDataDebounced(
+      {
+        materials,
+        recipes,
+        productions,
+        transactions,
+        stockCountRecords,
+        isInitialized: true,
+      },
+      350
+    );
+  }, [materials, recipes, productions, transactions, stockCountRecords]);
+
+  // Load persistent data & settings from Firestore Cloud Database & Google Sheet on startup
   useEffect(() => {
     testFirestoreConnection();
 
     let isSubscribed = true;
 
-    // 1. Initial fetch from Cloud Firestore to guarantee persistent data across devices & days
+    // 1. Initial fetch from Cloud Firestore & fallback to Google Sheets
     (async () => {
       try {
         const [cloudData, cloudSettings] = await Promise.all([
@@ -471,40 +477,149 @@ export default function App() {
 
         if (!isSubscribed) return;
 
+        let loadedMats = materials;
+        let loadedRecipes = recipes;
+        let loadedProds = productions;
+        let loadedTxs = transactions;
+        let loadedCounts = stockCountRecords;
+        let hasData = false;
+
         if (cloudData && cloudData.isInitialized) {
-          if (cloudData.materials !== undefined) {
-            setMaterials(cloudData.materials);
-            localStorage.setItem('stock_materials', JSON.stringify(cloudData.materials));
+          const hasCloudItems =
+            (cloudData.materials && cloudData.materials.length > 0) ||
+            (cloudData.productions && cloudData.productions.length > 0) ||
+            (cloudData.transactions && cloudData.transactions.length > 0) ||
+            (cloudData.recipes && cloudData.recipes.length > 0);
+
+          if (hasCloudItems) {
+            loadedMats = cloudData.materials || [];
+            loadedRecipes = cloudData.recipes || [];
+            loadedProds = cloudData.productions || [];
+            loadedTxs = cloudData.transactions || [];
+            loadedCounts = cloudData.stockCountRecords || [];
+            setMaterials(loadedMats);
+            setRecipes(loadedRecipes);
+            setProductions(loadedProds);
+            setTransactions(loadedTxs);
+            setStockCountRecords(loadedCounts);
+            hasData = true;
           }
-          if (cloudData.recipes !== undefined) {
-            setRecipes(cloudData.recipes);
-            localStorage.setItem('stock_recipes', JSON.stringify(cloudData.recipes));
-          }
-          if (cloudData.productions !== undefined) {
-            setProductions(cloudData.productions);
-            localStorage.setItem('stock_productions', JSON.stringify(cloudData.productions));
-          }
-          if (cloudData.transactions !== undefined) {
-            setTransactions(cloudData.transactions);
-            localStorage.setItem('stock_transactions', JSON.stringify(cloudData.transactions));
-          }
-          if (cloudData.stockCountRecords !== undefined) {
-            setStockCountRecords(cloudData.stockCountRecords);
-            localStorage.setItem('stock_count_records', JSON.stringify(cloudData.stockCountRecords));
-          }
-          localStorage.setItem('stock_data_initialized', 'true');
-        } else {
-          // Cloud database is empty (first boot), keep clean empty state
-          saveCloudDataDebounced({
-            materials: [],
-            recipes: [],
-            productions: [],
-            transactions: [],
-            stockCountRecords: [],
-            isInitialized: true,
-          }, 0);
-          localStorage.setItem('stock_data_initialized', 'true');
         }
+
+        // If cloud was empty, check if localStorage has unsynced data
+        if (!hasData) {
+          const localMats = localStorage.getItem('stock_materials');
+          const localTxs = localStorage.getItem('stock_transactions');
+          const localProds = localStorage.getItem('stock_productions');
+          const localRecipes = localStorage.getItem('stock_recipes');
+          const localCounts = localStorage.getItem('stock_count_records');
+
+          if (localMats || localTxs || localProds) {
+            try {
+              if (localMats) {
+                const parsed = JSON.parse(localMats);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  loadedMats = parsed;
+                  setMaterials(parsed);
+                  hasData = true;
+                }
+              }
+              if (localRecipes) {
+                const parsed = JSON.parse(localRecipes);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  loadedRecipes = parsed;
+                  setRecipes(parsed);
+                }
+              }
+              if (localTxs) {
+                const parsed = JSON.parse(localTxs);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  loadedTxs = parsed;
+                  setTransactions(parsed);
+                  hasData = true;
+                }
+              }
+              if (localProds) {
+                const parsed = JSON.parse(localProds);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  loadedProds = parsed;
+                  setProductions(parsed);
+                  hasData = true;
+                }
+              }
+              if (localCounts) {
+                const parsed = JSON.parse(localCounts);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  loadedCounts = parsed;
+                  setStockCountRecords(parsed);
+                }
+              }
+            } catch (e) {
+              console.warn('LocalStorage parse notice:', e);
+            }
+          }
+        }
+
+        // Resolve webhook configuration
+        const targetWebhook =
+          (DEFAULT_WEBHOOK_URL && DEFAULT_WEBHOOK_URL.trim().startsWith('http') ? DEFAULT_WEBHOOK_URL.trim() : null) ||
+          cloudSettings?.webhookUrl ||
+          localStorage.getItem('stock_webhook_url');
+
+        // If still empty or user reopened the page, automatically pull from Google Sheet!
+        if (!hasData && targetWebhook) {
+          try {
+            console.log('🔄 Auto-fetching data from Google Sheet Webhook on startup...');
+            const sheetData = await fetchDataFromGoogleSheet(targetWebhook);
+            if (
+              sheetData &&
+              ((sheetData.materials && sheetData.materials.length > 0) ||
+                (sheetData.productions && sheetData.productions.length > 0) ||
+                (sheetData.transactions && sheetData.transactions.length > 0))
+            ) {
+              if (sheetData.materials && sheetData.materials.length > 0) {
+                loadedMats = sheetData.materials;
+                setMaterials(loadedMats);
+              }
+              if (sheetData.recipes && sheetData.recipes.length > 0) {
+                loadedRecipes = sheetData.recipes;
+                setRecipes(loadedRecipes);
+              }
+              if (sheetData.productions && sheetData.productions.length > 0) {
+                loadedProds = sheetData.productions;
+                setProductions(loadedProds);
+              }
+              if (sheetData.transactions && sheetData.transactions.length > 0) {
+                loadedTxs = sheetData.transactions;
+                setTransactions(loadedTxs);
+              }
+              if (sheetData.monthlyStockCounts && sheetData.monthlyStockCounts.length > 0) {
+                loadedCounts = sheetData.monthlyStockCounts;
+                setStockCountRecords(loadedCounts);
+              }
+              hasData = true;
+              showNotification('📥 ดึงข้อมูลล่าสุดจาก Google Sheets สำเร็จเรียบร้อย');
+            }
+          } catch (e) {
+            console.warn('Auto-fetch from Google Sheet notice:', e);
+          }
+        }
+
+        // Save active state to Cloud Database
+        saveCloudDataDebounced(
+          {
+            materials: loadedMats,
+            recipes: loadedRecipes,
+            productions: loadedProds,
+            transactions: loadedTxs,
+            stockCountRecords: loadedCounts,
+            isInitialized: true,
+          },
+          100
+        );
+
+        localStorage.setItem('stock_data_initialized', 'true');
+        isInitialLoadDoneRef.current = true;
 
         if (cloudSettings) {
           if (DEFAULT_WEBHOOK_URL && DEFAULT_WEBHOOK_URL.trim().startsWith('http')) {
@@ -556,6 +671,7 @@ export default function App() {
         }
       } catch (err) {
         console.warn('Initial cloud state fetch notice:', err);
+        isInitialLoadDoneRef.current = true;
       }
     })();
 
@@ -902,6 +1018,101 @@ export default function App() {
     }
   };
 
+  // Pull / Import data from Google Sheet down to Web Application
+  const handlePullFromGoogleSheet = async () => {
+    const targetWebhook =
+      (DEFAULT_WEBHOOK_URL && DEFAULT_WEBHOOK_URL.trim().startsWith('http') ? DEFAULT_WEBHOOK_URL.trim() : null) ||
+      webhookUrl ||
+      localStorage.getItem('stock_webhook_url');
+
+    const currentSheetId = spreadsheetId || localStorage.getItem('stock_spreadsheet_id');
+
+    if (!targetWebhook && !currentSheetId) {
+      setIsSyncModalOpen(true);
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      let importedCount = 0;
+
+      if (targetWebhook) {
+        showNotification('⏳ กำลังดึงข้อมูลจาก Google Sheets Webhook...');
+        const sheetData = await fetchDataFromGoogleSheet(targetWebhook);
+        if (sheetData) {
+          if (sheetData.materials && sheetData.materials.length > 0) {
+            setMaterials(sheetData.materials);
+            importedCount += sheetData.materials.length;
+          }
+          if (sheetData.recipes && sheetData.recipes.length > 0) {
+            setRecipes(sheetData.recipes);
+            importedCount += sheetData.recipes.length;
+          }
+          if (sheetData.productions && sheetData.productions.length > 0) {
+            setProductions(sheetData.productions);
+            importedCount += sheetData.productions.length;
+          }
+          if (sheetData.transactions && sheetData.transactions.length > 0) {
+            setTransactions(sheetData.transactions);
+            importedCount += sheetData.transactions.length;
+          }
+          if (sheetData.monthlyStockCounts && sheetData.monthlyStockCounts.length > 0) {
+            setStockCountRecords(sheetData.monthlyStockCounts);
+            importedCount += sheetData.monthlyStockCounts.length;
+          }
+        }
+      } else if (currentSheetId) {
+        let currentToken = token || (await getAccessToken());
+        if (!currentToken) {
+          const res = await googleSignIn();
+          if (res) {
+            currentToken = res.accessToken;
+            setUser(res.user);
+            setToken(res.accessToken);
+          }
+        }
+        if (currentToken) {
+          showNotification('⏳ กำลังดึงข้อมูลจาก Google Sheets API...');
+          const sheetData = await fetchAllSheetData(currentToken, currentSheetId);
+          if (sheetData) {
+            if (sheetData.materials && sheetData.materials.length > 0) {
+              setMaterials(sheetData.materials);
+              importedCount += sheetData.materials.length;
+            }
+            if (sheetData.recipes && sheetData.recipes.length > 0) {
+              setRecipes(sheetData.recipes);
+              importedCount += sheetData.recipes.length;
+            }
+            if (sheetData.productions && sheetData.productions.length > 0) {
+              setProductions(sheetData.productions);
+              importedCount += sheetData.productions.length;
+            }
+            if (sheetData.transactions && sheetData.transactions.length > 0) {
+              setTransactions(sheetData.transactions);
+              importedCount += sheetData.transactions.length;
+            }
+          }
+        }
+      }
+
+      const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+      setLastSyncTime(nowStr);
+      localStorage.setItem('stock_last_sync', nowStr);
+      saveCloudSettings({ lastSyncTime: nowStr });
+
+      if (importedCount > 0) {
+        showNotification(`✅ ดึงข้อมูลจาก Google Sheets เข้ามาในเว็บสำเร็จ (${importedCount} รายการ)`);
+      } else {
+        showNotification('ℹ️ เชื่อมต่อ Google Sheet สำเร็จ แต่ยังไม่พบรายการข้อมูลในชีท');
+      }
+    } catch (err: any) {
+      console.error(err);
+      showNotification(`⚠️ ไม่สามารถดึงข้อมูลจาก Google Sheet ได้: ${err.message}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // Disconnect Sheet
   const handleDisconnectSheet = () => {
     if (window.confirm('คุณต้องการยกเลิกการเชื่อมต่อกับ Google Sheet นี้ใช่หรือไม่? (ข้อมูลในเว็บและในชีทจะไม่ถูกลบ)')) {
@@ -1135,6 +1346,7 @@ export default function App() {
           }
         }}
         onSyncNow={handlePushAllToSheet}
+        onPullFromSheet={handlePullFromGoogleSheet}
         onSignIn={handleSignIn}
         onSignOut={handleSignOut}
         lowStockCount={lowStockCount}
@@ -1386,6 +1598,7 @@ export default function App() {
         onCreateNewSheet={handleCreateNewSheet}
         onLinkExistingSheet={handleLinkExistingSheet}
         onPushAllToSheet={handlePushAllToSheet}
+        onPullFromSheet={handlePullFromGoogleSheet}
         onDisconnectSheet={handleDisconnectSheet}
         materials={materials}
         recipes={recipes}

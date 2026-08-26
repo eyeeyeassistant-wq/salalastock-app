@@ -75,9 +75,127 @@ function doPost(e) {
 }
 
 function doGet(e) {
-  return ContentService.createTextOutput(
-    JSON.stringify({ status: 'online', message: 'Stock Auto-Sync Web App is running' })
-  ).setMimeType(ContentService.MimeType.JSON);
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var allData = readAllData(ss);
+    return ContentService.createTextOutput(
+      JSON.stringify({ status: 'success', data: allData })
+    ).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ status: 'error', error: err.toString() })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function readAllData(ss) {
+  var result = {
+    materials: [],
+    recipes: [],
+    productions: [],
+    transactions: [],
+    monthlyStockCounts: []
+  };
+
+  // 1. Master_Materials
+  var matSheet = ss.getSheetByName('Master_Materials');
+  if (matSheet && matSheet.getLastRow() > 1) {
+    var matVals = matSheet.getRange(2, 1, matSheet.getLastRow() - 1, 5).getValues();
+    matVals.forEach(function(row) {
+      if (row[0]) {
+        result.materials.push({
+          RM_Code: String(row[0]),
+          RM_Name: String(row[1] || ''),
+          Unit: String(row[2] || 'kg'),
+          Opening_Stock: Number(row[3]) || 0,
+          Safety_Stock: Number(row[4]) || 0
+        });
+      }
+    });
+  }
+
+  // 2. BOM_Recipe
+  var bomSheet = ss.getSheetByName('BOM_Recipe');
+  if (bomSheet && bomSheet.getLastRow() > 1) {
+    var bomVals = bomSheet.getRange(2, 1, bomSheet.getLastRow() - 1, 4).getValues();
+    bomVals.forEach(function(row) {
+      if (row[0] && row[2]) {
+        result.recipes.push({
+          Product_Code: String(row[0]),
+          Product_Name: String(row[1] || ''),
+          RM_Code: String(row[2]),
+          Standard_Qty: Number(row[3]) || 0
+        });
+      }
+    });
+  }
+
+  // 3. Daily_Production
+  var prodSheet = ss.getSheetByName('Daily_Production');
+  if (prodSheet && prodSheet.getLastRow() > 1) {
+    var prodVals = prodSheet.getRange(2, 1, prodSheet.getLastRow() - 1, 6).getValues();
+    prodVals.forEach(function(row) {
+      if (row[0] && row[1]) {
+        var dStr = row[0] instanceof Date ? row[0].toISOString().split('T')[0] : String(row[0]);
+        result.productions.push({
+          Date: dStr,
+          Product_Code: String(row[1]),
+          Produced_Qty: Number(row[2]) || 0,
+          Dispatch_Branch_A: Number(row[3]) || 0,
+          Dispatch_Branch_B: Number(row[4]) || 0
+        });
+      }
+    });
+  }
+
+  // 4. Stock_Transactions
+  var txSheet = ss.getSheetByName('Stock_Transactions');
+  if (txSheet && txSheet.getLastRow() > 1) {
+    var txVals = txSheet.getRange(2, 1, txSheet.getLastRow() - 1, 6).getValues();
+    txVals.forEach(function(row) {
+      if (row[0] && row[2]) {
+        var dStr = row[0] instanceof Date ? row[0].toISOString().split('T')[0] : String(row[0]);
+        result.transactions.push({
+          Date: dStr,
+          Type: String(row[1]) === 'Actual Usage' ? 'Actual Usage' : 'Receive',
+          RM_Code: String(row[2]),
+          Qty: Number(row[3]) || 0,
+          Recorder: String(row[4] || ''),
+          Note: String(row[5] || '')
+        });
+      }
+    });
+  }
+
+  // 5. Monthly_Stock_Count
+  var countSheet = ss.getSheetByName('Monthly_Stock_Count');
+  if (countSheet && countSheet.getLastRow() > 1) {
+    var countVals = countSheet.getRange(2, 1, countSheet.getLastRow() - 1, 7).getValues();
+    var countMap = {};
+    countVals.forEach(function(row) {
+      var month = String(row[0] || '');
+      if (month && row[1]) {
+        if (!countMap[month]) {
+          countMap[month] = {
+            id: 'count_' + month,
+            Month: month,
+            Recorded_At: String(row[5] || ''),
+            Note: String(row[6] || ''),
+            Items: []
+          };
+        }
+        countMap[month].Items.push({
+          RM_Code: String(row[1]),
+          RM_Name: String(row[2] || ''),
+          Unit: String(row[3] || ''),
+          Counted_Qty: Number(row[4]) || 0
+        });
+      }
+    });
+    result.monthlyStockCounts = Object.keys(countMap).map(function(k) { return countMap[k]; });
+  }
+
+  return result;
 }
 
 function syncAllData(ss, data) {
@@ -250,6 +368,35 @@ export async function testWebhookConnection(webhookUrl: string): Promise<boolean
     throw new Error('กรุณาระบุ URL ของ Google Apps Script Web App ให้ถูกต้อง');
   }
   return syncViaWebhook(webhookUrl, { materials: [], recipes: [], productions: [], transactions: [] }, 'test');
+}
+
+/**
+ * Fetch all sheet data from Google Apps Script Web App (zero-login read)
+ */
+export async function fetchDataFromGoogleSheet(webhookUrl: string): Promise<SyncPayload | null> {
+  if (!webhookUrl || !webhookUrl.startsWith('http')) return null;
+
+  try {
+    const fetchUrl = webhookUrl.includes('?') ? `${webhookUrl}&action=readAll` : `${webhookUrl}?action=readAll`;
+    const res = await fetch(fetchUrl, {
+      method: 'GET',
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (json && json.status === 'success' && json.data) {
+      return {
+        materials: Array.isArray(json.data.materials) ? json.data.materials : [],
+        recipes: Array.isArray(json.data.recipes) ? json.data.recipes : [],
+        productions: Array.isArray(json.data.productions) ? json.data.productions : [],
+        transactions: Array.isArray(json.data.transactions) ? json.data.transactions : [],
+        monthlyStockCounts: Array.isArray(json.data.monthlyStockCounts) ? json.data.monthlyStockCounts : [],
+      };
+    }
+    return null;
+  } catch (err) {
+    console.warn('Notice: Could not fetch data from Google Sheet Webhook:', err);
+    return null;
+  }
 }
 
 

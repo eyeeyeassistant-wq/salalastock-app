@@ -9,6 +9,7 @@ import {
   BookOpen,
   Plus,
   RefreshCw,
+  DownloadCloud,
   ExternalLink,
   LogOut,
   AlertTriangle,
@@ -48,6 +49,7 @@ interface NavbarProps {
   onOpenOpeningStockModal: () => void;
   onOpenClearDataModal: () => void;
   onSyncNow: () => void;
+  onPullFromSheet?: () => void;
   onSignIn: () => void;
   onSignOut: () => void;
   lowStockCount: number;
@@ -75,6 +77,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenOpeningStockModal,
   onOpenClearDataModal,
   onSyncNow,
+  onPullFromSheet,
   onSignIn,
   onSignOut,
   lowStockCount,
@@ -348,6 +351,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="hidden sm:inline font-semibold text-xs">
                   {autoSyncEnabled ? 'ซิงค์ Sheets' : 'ต่อ Sheets แล้ว'}
                 </span>
+                {onPullFromSheet && (
+                  <button
+                    onClick={onPullFromSheet}
+                    disabled={isSyncing}
+                    title="ดึงข้อมูลจาก Google Sheet เข้าสู่หน้าเว็บ"
+                    className="hover:text-emerald-100 p-1 transition-transform touch-manipulation text-emerald-300"
+                  >
+                    <DownloadCloud className={`w-3.5 h-3.5 ${isSyncing ? 'animate-pulse' : ''}`} />
+                  </button>
+                )}
                 <button
                   onClick={onSyncNow}
                   disabled={isSyncing}
