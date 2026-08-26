@@ -22,6 +22,7 @@ import {
 import { User } from 'firebase/auth';
 import { GOOGLE_APPS_SCRIPT_CODE, testWebhookConnection } from '../services/googleSheets';
 import { exportFullDataToExcel, parseExcelImport } from '../services/excelExport';
+import { DEFAULT_WEBHOOK_URL } from '../config/googleSheetsConfig';
 import {
   MasterMaterial,
   BOMRecipe,
@@ -419,6 +420,24 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
               </div>
             </div>
 
+            {/* Config file tip banner */}
+            <div className="p-3 bg-slate-900 text-white rounded-xl text-xs space-y-1.5 font-sans">
+              <div className="flex items-center justify-between text-emerald-400 font-bold">
+                <span className="flex items-center gap-1.5">
+                  <Code2 className="w-4 h-4" />
+                  <span>ตำแหน่งใส่ URL ในโค้ดโดยตรง (ไม่ต้องใส่ผ่านหน้าเว็บซ้ำ):</span>
+                </span>
+                {DEFAULT_WEBHOOK_URL && (
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] border border-emerald-500/40">
+                    มีค่าในโค้ดแล้ว
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-300">
+                คุณสามารถนำ Web App URL ไปวางในไฟล์ <code className="px-1.5 py-0.5 bg-slate-800 text-emerald-300 rounded font-mono">/src/config/googleSheetsConfig.ts</code> ที่ตัวแปร <code className="px-1.5 py-0.5 bg-slate-800 text-amber-300 rounded font-mono">DEFAULT_WEBHOOK_URL</code> ได้เลย
+              </p>
+            </div>
+
             {/* Input Webhook Form */}
             <form onSubmit={handleWebhookSubmit} className="space-y-3">
               <div>
@@ -462,13 +481,52 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
           </div>
         )}
 
-        {/* TAB 2: OAUTH (GOOGLE ACCOUNT) */}
+        {/* TAB 2: OAUTH (GOOGLE ACCOUNT & SHARED SHEET WORKFLOW) */}
         {activeTab === 'oauth' && (
           <div className="space-y-4">
+            {/* Shared Sheet Workflow Guide Card */}
+            <div className="p-4 bg-blue-50/80 border border-blue-200 rounded-2xl space-y-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-blue-950">
+                <FileSpreadsheet className="w-4 h-4 text-blue-600" />
+                <span>ขั้นตอนการใช้ Google Sheet กลางร่วมกันทั้งร้าน (Shared Central Sheet):</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs text-slate-700">
+                <div className="bg-white p-3 rounded-xl border border-blue-200/70 space-y-1">
+                  <div className="font-bold text-blue-900 flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">1</span>
+                    <span>เจ้าของผูกชีท</span>
+                  </div>
+                  <p className="text-[11px] text-slate-600">
+                    เจ้าของสร้างชีทใหม่หรือวาง Sheet ID กลางในระบบนี้ (ระบบจะจำไว้บน Cloud อัตโนมัติ)
+                  </p>
+                </div>
+
+                <div className="bg-white p-3 rounded-xl border border-blue-200/70 space-y-1">
+                  <div className="font-bold text-blue-900 flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">2</span>
+                    <span>แชร์สิทธิ์ให้ทีม</span>
+                  </div>
+                  <p className="text-[11px] text-slate-600">
+                    เจ้าของเปิด Google Sheet แล้วกดปุ่ม <b>"แชร์ (Share)"</b> ให้กับอีเมล Google ของพนักงาน (สิทธิ์ Editor)
+                  </p>
+                </div>
+
+                <div className="bg-white p-3 rounded-xl border border-blue-200/70 space-y-1">
+                  <div className="font-bold text-blue-900 flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]">3</span>
+                    <span>พนักงานล็อกอิน</span>
+                  </div>
+                  <p className="text-[11px] text-slate-600">
+                    พนักงานกดล็อกอิน Google บนเว็บนี้ ทุกข้อมูลที่กรอกจะซิงค์เข้าชีทของเจ้าของทันที
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {!user ? (
               <div className="text-center py-6 space-y-4 bg-slate-50 rounded-2xl border border-slate-200 p-6">
                 <div className="text-sm text-slate-700 font-medium">
-                  เข้าสู่ระบบด้วยบัญชี Google เพื่ออนุญาตให้ระบบสร้างหรือเข้าถึง Google Spreadsheet ในไดรฟ์ของคุณ
+                  เข้าสู่ระบบด้วยบัญชี Google เพื่อให้ระบบสามารถเข้าถึงและอัปเดต Google Sheet กลางที่แชร์ไว้
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -476,7 +534,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                     type="button"
                     onClick={onSignIn}
                     id="btn-oauth-signin"
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-5 py-2.5 rounded-xl font-bold bg-slate-900 text-white hover:bg-slate-800 shadow-md text-xs transition-all"
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-5 py-2.5 rounded-xl font-bold bg-slate-900 text-white hover:bg-slate-800 shadow-md text-xs transition-all cursor-pointer"
                   >
                     <svg className="w-4 h-4" viewBox="0 0 24 24">
                       <path
@@ -511,7 +569,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                 </div>
 
                 <p className="text-[11px] text-slate-500">
-                  💡 หากหน้าต่างล็อกอินไม่ขึ้น หรือมีข้อผิดพลาดเรื่องการยืนยันตัวตน ให้ใช้วิธีที่ 1 (Apps Script Webhook) ซึ่งสะดวกและเร็วกว่า
+                  💡 บัญชี Google ที่ล็อกอินต้องมีสิทธิ์เข้าถึงหรือเป็นผู้ได้รับแชร์ Google Sheet นี้
                 </p>
               </div>
             ) : (

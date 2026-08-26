@@ -65,6 +65,11 @@ import { ClearDataModal } from './components/ClearDataModal';
 import { PopupBlockedModal } from './components/PopupBlockedModal';
 import { AdminAuthModal } from './components/AdminAuthModal';
 import { MonthlyStockCountRecord } from './types/stock';
+import {
+  DEFAULT_WEBHOOK_URL,
+  DEFAULT_SPREADSHEET_URL,
+  getEffectiveWebhookUrl,
+} from './config/googleSheetsConfig';
 
 export default function App() {
   const [userRole, setUserRole] = useState<UserRole>('staff');
@@ -152,10 +157,10 @@ export default function App() {
     return localStorage.getItem('stock_spreadsheet_id') || null;
   });
   const [spreadsheetUrl, setSpreadsheetUrl] = useState<string | null>(() => {
-    return localStorage.getItem('stock_spreadsheet_url') || null;
+    return localStorage.getItem('stock_spreadsheet_url') || (DEFAULT_SPREADSHEET_URL ? DEFAULT_SPREADSHEET_URL : null);
   });
   const [webhookUrl, setWebhookUrl] = useState<string | null>(() => {
-    return localStorage.getItem('stock_webhook_url') || null;
+    return getEffectiveWebhookUrl();
   });
   const [autoSyncEnabled, setAutoSyncEnabled] = useState<boolean>(() => {
     return localStorage.getItem('stock_auto_sync') !== 'false';
@@ -194,7 +199,7 @@ export default function App() {
     const isAuto = localStorage.getItem('stock_auto_sync') !== 'false';
     if (!isAuto) return;
 
-    const currentWebhook = webhookUrl || localStorage.getItem('stock_webhook_url');
+    const currentWebhook = getEffectiveWebhookUrl() || webhookUrl || localStorage.getItem('stock_webhook_url');
     const currentSheetId = spreadsheetId || localStorage.getItem('stock_spreadsheet_id');
 
     if (!currentWebhook && !currentSheetId) return;
@@ -506,7 +511,10 @@ export default function App() {
         }
 
         if (cloudSettings) {
-          if (cloudSettings.webhookUrl !== undefined) {
+          if (DEFAULT_WEBHOOK_URL && DEFAULT_WEBHOOK_URL.trim().startsWith('http')) {
+            setWebhookUrl(DEFAULT_WEBHOOK_URL.trim());
+            localStorage.setItem('stock_webhook_url', DEFAULT_WEBHOOK_URL.trim());
+          } else if (cloudSettings.webhookUrl !== undefined) {
             setWebhookUrl(cloudSettings.webhookUrl);
             if (cloudSettings.webhookUrl) {
               localStorage.setItem('stock_webhook_url', cloudSettings.webhookUrl);
@@ -514,6 +522,7 @@ export default function App() {
               localStorage.removeItem('stock_webhook_url');
             }
           }
+
           if (cloudSettings.spreadsheetId !== undefined) {
             setSpreadsheetId(cloudSettings.spreadsheetId);
             if (cloudSettings.spreadsheetId) {
@@ -522,7 +531,11 @@ export default function App() {
               localStorage.removeItem('stock_spreadsheet_id');
             }
           }
-          if (cloudSettings.spreadsheetUrl !== undefined) {
+
+          if (DEFAULT_SPREADSHEET_URL && DEFAULT_SPREADSHEET_URL.trim().startsWith('http')) {
+            setSpreadsheetUrl(DEFAULT_SPREADSHEET_URL.trim());
+            localStorage.setItem('stock_spreadsheet_url', DEFAULT_SPREADSHEET_URL.trim());
+          } else if (cloudSettings.spreadsheetUrl !== undefined) {
             setSpreadsheetUrl(cloudSettings.spreadsheetUrl);
             if (cloudSettings.spreadsheetUrl) {
               localStorage.setItem('stock_spreadsheet_url', cloudSettings.spreadsheetUrl);
@@ -1169,6 +1182,17 @@ export default function App() {
             productions={productions}
             transactions={transactions}
             stockCountRecords={stockCountRecords}
+            user={user}
+            spreadsheetId={spreadsheetId}
+            spreadsheetUrl={spreadsheetUrl}
+            onSignIn={handleSignIn}
+            onOpenSyncModal={() => {
+              if (!isAdminAuthenticated) {
+                handleRequestAdminAuth();
+              } else {
+                setIsSyncModalOpen(true);
+              }
+            }}
             onOpenNewProdModal={() => {
               setEditingProduction(null);
               setIsNewProdModalOpen(true);
@@ -1428,6 +1452,13 @@ export default function App() {
         onRetry={() => {
           setIsPopupBlockedModalOpen(false);
           handleSignIn();
+        }}
+        onOpenSyncModal={() => {
+          if (!isAdminAuthenticated) {
+            handleRequestAdminAuth();
+          } else {
+            setIsSyncModalOpen(true);
+          }
         }}
       />
     </div>

@@ -17,7 +17,12 @@ import {
   Trash2,
   ClipboardCheck,
   Sparkles,
+  FileSpreadsheet,
+  ExternalLink,
+  LogIn,
+  Zap,
 } from 'lucide-react';
+import { User } from 'firebase/auth';
 import {
   MasterMaterial,
   DailyProduction,
@@ -32,6 +37,11 @@ interface StaffPortalTabProps {
   productions: DailyProduction[];
   transactions: StockTransaction[];
   stockCountRecords?: MonthlyStockCountRecord[];
+  user?: User | null;
+  spreadsheetId?: string | null;
+  spreadsheetUrl?: string | null;
+  onSignIn?: () => void;
+  onOpenSyncModal?: () => void;
   onOpenNewProdModal: () => void;
   onOpenNewTxModal: (type?: 'Receive' | 'Actual Usage') => void;
   onOpenOpeningStockModal: () => void;
@@ -49,6 +59,11 @@ export const StaffPortalTab: React.FC<StaffPortalTabProps> = ({
   productions,
   transactions,
   stockCountRecords = [],
+  user,
+  spreadsheetId,
+  spreadsheetUrl,
+  onSignIn,
+  onOpenSyncModal,
   onOpenNewProdModal,
   onOpenNewTxModal,
   onOpenOpeningStockModal,
@@ -115,6 +130,70 @@ export const StaffPortalTab: React.FC<StaffPortalTabProps> = ({
               <div className="text-slate-400 text-[11px]">จัดการโดย Admin หลังบ้าน</div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Google Sheets / Central Sync Status for Staff */}
+      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+            user ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-50 text-blue-600'
+          }`}>
+            <FileSpreadsheet className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-bold text-slate-900">
+                {user ? 'เข้าสู่ระบบ Google และเชื่อมต่อ Sheet กลางแล้ว' : 'เข้าสู่ระบบ Google เพื่อซิงค์ข้อมูลลง Sheet กลาง'}
+              </h4>
+              {user ? (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  ซิงค์อัตโนมัติ
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                  แนะนำให้ล็อกอิน
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-500">
+              {user
+                ? `บัญชี Google: ${user.email} — ทุกรายการที่คุณบันทึกจะซิงค์เข้า Google Sheet กลางของร้านทันที`
+                : 'เมื่อล็อกอินด้วย Google ทุกการบันทึกจะส่งเข้า Google Sheet ที่หัวหน้าแชร์ให้อัตโนมัติ'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {!user && onSignIn && (
+            <button
+              type="button"
+              onClick={onSignIn}
+              id="btn-staff-google-signin"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white shadow-xs transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.35 24 12 24z"/>
+                <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 10.02 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+              </svg>
+              <span>เข้าสู่ระบบด้วย Google</span>
+            </button>
+          )}
+
+          {spreadsheetUrl && (
+            <a
+              href={spreadsheetUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>เปิดดูชีทกลาง</span>
+            </a>
+          )}
         </div>
       </div>
 
