@@ -199,10 +199,12 @@ function readAllData(ss) {
 }
 
 function syncAllData(ss, data) {
-  var materials = data.materials || [];
-  var recipes = data.recipes || [];
-  var productions = data.productions || [];
-  var transactions = data.transactions || [];
+  var d = (data && data.data) ? data.data : (data || {});
+  var materials = d.materials || (data && data.materials) || [];
+  var recipes = d.recipes || (data && data.recipes) || [];
+  var productions = d.productions || (data && data.productions) || [];
+  var transactions = d.transactions || (data && data.transactions) || [];
+  var counts = d.monthlyStockCounts || (data && data.monthlyStockCounts) || [];
 
   // 1. Master_Materials
   var matSheet = getOrCreateSheet(ss, 'Master_Materials');
@@ -342,18 +344,24 @@ export async function syncViaWebhook(
   }
 
   try {
-    // We send payload as JSON string. Google Apps Script Web Apps handle POST with no-cors or standard fetch
+    const bodyObj = {
+      action,
+      data: payload,
+      materials: payload.materials || [],
+      recipes: payload.recipes || [],
+      productions: payload.productions || [],
+      transactions: payload.transactions || [],
+      monthlyStockCounts: payload.monthlyStockCounts || [],
+      timestamp: new Date().toISOString(),
+    };
+
     await fetch(webhookUrl, {
       method: 'POST',
       mode: 'no-cors', // essential for Google Apps Script redirects across origins
       headers: {
         'Content-Type': 'text/plain;charset=utf-8',
       },
-      body: JSON.stringify({
-        action,
-        data: payload,
-        timestamp: new Date().toISOString(),
-      }),
+      body: JSON.stringify(bodyObj),
     });
 
     return true;

@@ -962,7 +962,8 @@ export default function App() {
 
   // Push local data up to Google Sheets (One-Way Export to Google Drive or Webhook)
   const handlePushAllToSheet = async () => {
-    const currentWebhook = webhookUrl || localStorage.getItem('stock_webhook_url');
+    const currentWebhook =
+      getEffectiveWebhookUrl() || webhookUrl || localStorage.getItem('stock_webhook_url');
     const currentSheetId = spreadsheetId || localStorage.getItem('stock_spreadsheet_id');
 
     if (!currentWebhook && !currentSheetId) {
