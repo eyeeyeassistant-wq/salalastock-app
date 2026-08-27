@@ -68,25 +68,83 @@ export function sanitizeMaterials(materials: MasterMaterial[] = []): MasterMater
  * Sanitize and deduplicate recipes by Product_Code + RM_Code
  */
 export function sanitizeRecipes(recipes: BOMRecipe[] = []): BOMRecipe[] {
-  const map = new Map<string, BOMRecipe>();
   const safeRecipes = Array.isArray(recipes) ? recipes : [];
+  const map = new Map<string, BOMRecipe>();
 
-  safeRecipes.forEach((r) => {
+  safeRecipes.forEach((r, idx) => {
     if (!r || !r.Product_Code || !r.RM_Code) return;
     const pCode = String(r.Product_Code).trim().toUpperCase();
     const rmCode = String(r.RM_Code).trim().toUpperCase();
-    const key = `${pCode}___${rmCode}`;
+    if (!pCode || !rmCode) return;
 
-    map.set(key, {
-      id: r.id || `recipe_${key}`,
-      Product_Code: pCode,
-      Product_Name: String(r.Product_Name || '').trim(),
-      RM_Code: rmCode,
-      Standard_Qty: Number(r.Standard_Qty) || 0,
-    });
+    const key = `${pCode}___${rmCode}`;
+    const existing = map.get(key);
+    const stdQty = Number(r.Standard_Qty) || 0;
+
+    if (!existing) {
+      map.set(key, {
+        id: r.id || `recipe_${pCode}_${rmCode}_${idx}`,
+        Product_Code: pCode,
+        Product_Name: String(r.Product_Name || '').trim(),
+        RM_Code: rmCode,
+        Standard_Qty: stdQty,
+      });
+    } else {
+      map.set(key, {
+        ...existing,
+        Product_Name: r.Product_Name && String(r.Product_Name).trim() ? String(r.Product_Name).trim() : existing.Product_Name,
+        Standard_Qty: stdQty > 0 ? stdQty : existing.Standard_Qty,
+      });
+    }
   });
 
   return Array.from(map.values());
+}
+
+/**
+ * Sanitize productions array ensuring stable IDs, valid numbers, and valid date
+ */
+export function sanitizeProductions(productions: DailyProduction[] = []): DailyProduction[] {
+  const safeProds = Array.isArray(productions) ? productions : [];
+  return safeProds.map((p, idx) => {
+    const dispatchA = Number(p.Dispatch_Branch_A) || 0;
+    const dispatchB = Number(p.Dispatch_Branch_B) || 0;
+    const leftoverA = Number(p.Leftover_Branch_A) || 0;
+    const leftoverB = Number(p.Leftover_Branch_B) || 0;
+    const producedQty = Number(p.Produced_Qty) || 0;
+
+    return {
+      id: p.id || `prod_${p.Date || 'unknown'}_${(p.Product_Code || 'prod').trim()}_${idx}_${Math.random().toString(36).slice(2, 7)}`,
+      Date: String(p.Date || '').trim(),
+      Product_Code: String(p.Product_Code || '').trim().toUpperCase(),
+      Produced_Qty: producedQty,
+      Dispatch_Branch_A: dispatchA,
+      Dispatch_Branch_B: dispatchB,
+      Leftover_Branch_A: leftoverA,
+      Leftover_Branch_B: leftoverB,
+      Total_Dispatched: p.Total_Dispatched !== undefined ? (Number(p.Total_Dispatched) || (dispatchA + dispatchB)) : (dispatchA + dispatchB),
+      Total_Leftover: p.Total_Leftover !== undefined ? (Number(p.Total_Leftover) || (leftoverA + leftoverB)) : (leftoverA + leftoverB),
+    };
+  });
+}
+
+/**
+ * Sanitize transactions array ensuring stable IDs, valid types and quantities
+ */
+export function sanitizeTransactions(transactions: StockTransaction[] = []): StockTransaction[] {
+  const safeTxs = Array.isArray(transactions) ? transactions : [];
+  return safeTxs.map((t, idx) => {
+    return {
+      id: t.id || `tx_${t.Date || 'unknown'}_${(t.RM_Code || 'rm').trim()}_${idx}_${Math.random().toString(36).slice(2, 7)}`,
+      productionId: t.productionId || undefined,
+      Date: String(t.Date || '').trim(),
+      Type: t.Type === 'Actual Usage' ? 'Actual Usage' : 'Receive',
+      RM_Code: String(t.RM_Code || '').trim().toUpperCase(),
+      Qty: Number(t.Qty) || 0,
+      Recorder: String(t.Recorder || '').trim(),
+      Note: String(t.Note || '').trim(),
+    };
+  });
 }
 
 /**
@@ -105,39 +163,62 @@ export function generateMonthlySummary(
   const safeTransactions = Array.isArray(transactions) ? transactions : [];
 
   return cleanMaterials.map((material) => {
-    const rmCode = material.RM_Code;
+    const rmCode = (material.RM_Code || '').trim().toUpperCase();
 
     // 1. Total_Receive: SUMIFS(Stock_Transactions!Qty, RM_Code, "Receive")
     const totalReceive = safeTransactions
-      .filter((t) => t && t.RM_Code && t.RM_Code.trim().toUpperCase() === rmCode && t.Type === 'Receive')
+      .filter((t) => {
+        if (!t || !t.RM_Code) return false;
+        const tCode = String(t.RM_Code).trim().toUpperCase();
+        const tType = String(t.Type || '').trim().toLowerCase();
+        return tCode === rmCode && tType === 'receive';
+      })
       .reduce((sum, t) => sum + (Number(t.Qty) || 0), 0);
 
     // 2. Actual_Usage: SUMIFS(Stock_Transactions!Qty, RM_Code, "Actual Usage")
     const actualUsage = safeTransactions
-      .filter((t) => t && t.RM_Code && t.RM_Code.trim().toUpperCase() === rmCode && t.Type === 'Actual Usage')
+      .filter((t) => {
+        if (!t || !t.RM_Code) return false;
+        const tCode = String(t.RM_Code).trim().toUpperCase();
+        const tType = String(t.Type || '').trim().toLowerCase();
+        return (
+          tCode === rmCode &&
+          (tType === 'actual usage' || tType === 'actual_usage' || tType === 'usage' || tType === 'actualusage')
+        );
+      })
       .reduce((sum, t) => sum + (Number(t.Qty) || 0), 0);
 
-    // 3. Expected_Usage: SUM of (Produced_Qty * Standard_Qty) for this RM_Code
+    // 3. Expected_Usage: SUM of (Produced_Qty * Standard_Qty) for this RM_Code across all productions and recipes
     let expectedUsage = 0;
     safeProductions.forEach((prod) => {
       if (!prod || !prod.Product_Code) return;
-      const pCode = prod.Product_Code.trim().toUpperCase();
-      const recipeMatch = cleanRecipes.find(
-        (r) => r.Product_Code === pCode && r.RM_Code === rmCode
+      const pCode = String(prod.Product_Code).trim().toUpperCase();
+      const prodQty = Number(prod.Produced_Qty) || 0;
+      if (prodQty <= 0) return;
+
+      const matchingRecipes = cleanRecipes.filter(
+        (r) =>
+          String(r.Product_Code || '').trim().toUpperCase() === pCode &&
+          String(r.RM_Code || '').trim().toUpperCase() === rmCode
       );
-      if (recipeMatch) {
-        expectedUsage += (Number(prod.Produced_Qty) || 0) * (Number(recipeMatch.Standard_Qty) || 0);
-      }
+
+      matchingRecipes.forEach((r) => {
+        const stdQty = Number(r.Standard_Qty) || 0;
+        expectedUsage += prodQty * stdQty;
+      });
     });
 
     // 4. Ending_Stock: Opening_Stock + Total_Receive - Actual_Usage
     const openingStock = Number(material.Opening_Stock) || 0;
     const endingStock = openingStock + totalReceive - actualUsage;
 
-    // 5. Variance: Actual_Usage - Expected_Usage (BOM Variance)
+    // 5. Variance: Actual_Usage - Expected_Usage (ยอดเบิกจริง ลบด้วย ยอดที่ควรเบิกตามสูตร)
+    // Positive (+) = Overused / Waste (เบิกเกินสูตร)
+    // Negative (-) = Underused / Saved (เบิกประหยัดกว่าสูตร)
+    // Zero (0) = Exact Match (เบิกตรงตามสูตร)
     const variance = actualUsage - expectedUsage;
 
-    // 6. Stock_Status: Ending_Stock <= Safety_Stock (only if Safety_Stock is configured > 0)
+    // 6. Stock_Status: Ending_Stock <= Safety_Stock
     const safetyStock = Number(material.Safety_Stock) || 0;
     const isLowStock = safetyStock > 0 && endingStock <= safetyStock;
     const stockStatus: '⚠️ วัตถุดิบใกล้หมด (ต้องสั่งเพิ่ม)' | 'ปกติ' = isLowStock
@@ -146,18 +227,31 @@ export function generateMonthlySummary(
 
     const isOverused = variance > 0.001;
     const variancePercentage =
-      expectedUsage > 0 ? (variance / expectedUsage) * 100 : 0;
+      expectedUsage > 0 ? (variance / expectedUsage) * 100 : actualUsage > 0 ? 100 : 0;
 
     // 7. Physical Stock Count comparison (ยอดเช็คสต็อกจริงสิ้นเดือน)
-    const hasPhysicalCount = physicalCounts !== undefined && (physicalCounts[rmCode] !== undefined || physicalCounts[rmCode.toLowerCase()] !== undefined);
-    const physicalCountVal = hasPhysicalCount ? (physicalCounts[rmCode] !== undefined ? physicalCounts[rmCode] : physicalCounts[rmCode.toLowerCase()]) : undefined;
-    const physicalVariance = hasPhysicalCount ? Number((physicalCountVal! - endingStock).toFixed(3)) : undefined;
-    
+    const hasPhysicalCount =
+      physicalCounts !== undefined &&
+      (physicalCounts[rmCode] !== undefined ||
+        physicalCounts[material.RM_Code] !== undefined ||
+        physicalCounts[rmCode.toLowerCase()] !== undefined);
+
+    const physicalCountVal = hasPhysicalCount
+      ? physicalCounts![rmCode] !== undefined
+        ? physicalCounts![rmCode]
+        : physicalCounts![material.RM_Code] !== undefined
+        ? physicalCounts![material.RM_Code]
+        : physicalCounts![rmCode.toLowerCase()]
+      : undefined;
+
+    const physicalVariance =
+      physicalCountVal !== undefined ? Number((physicalCountVal - endingStock).toFixed(3)) : undefined;
+
     let physicalStatus: 'ตรง' | 'ขาด' | 'เกิน' | 'ยังไม่ตรวจนับ' = 'ยังไม่ตรวจนับ';
-    if (hasPhysicalCount) {
-      if (Math.abs(physicalVariance!) < 0.001) {
+    if (physicalCountVal !== undefined && physicalVariance !== undefined) {
+      if (Math.abs(physicalVariance) < 0.001) {
         physicalStatus = 'ตรง';
-      } else if (physicalVariance! < 0) {
+      } else if (physicalVariance < 0) {
         physicalStatus = 'ขาด';
       } else {
         physicalStatus = 'เกิน';
@@ -168,7 +262,7 @@ export function generateMonthlySummary(
       RM_Code: material.RM_Code,
       RM_Name: material.RM_Name,
       Unit: material.Unit,
-      Opening_Stock: openingStock,
+      Opening_Stock: Number(openingStock.toFixed(3)),
       Total_Receive: Number(totalReceive.toFixed(3)),
       Actual_Usage: Number(actualUsage.toFixed(3)),
       Expected_Usage: Number(expectedUsage.toFixed(3)),

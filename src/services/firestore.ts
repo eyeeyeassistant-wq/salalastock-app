@@ -153,7 +153,12 @@ export function subscribeToCloudChanges(
 ) {
   const unsubData = onSnapshot(
     doc(db, 'bakery_store', 'main_data'),
+    { includeMetadataChanges: true },
     (snap) => {
+      // Ignore local pending writes to avoid reverting immediate user edits/deletions
+      if (snap.metadata.hasPendingWrites) {
+        return;
+      }
       if (snap.exists()) {
         onDataChange(snap.data() as AppCloudData);
       }
@@ -165,7 +170,11 @@ export function subscribeToCloudChanges(
 
   const unsubSettings = onSnapshot(
     doc(db, 'bakery_store', 'settings'),
+    { includeMetadataChanges: true },
     (snap) => {
+      if (snap.metadata.hasPendingWrites) {
+        return;
+      }
       if (snap.exists()) {
         onSettingsChange(snap.data() as AppCloudSettings);
       }

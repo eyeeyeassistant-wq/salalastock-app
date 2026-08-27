@@ -386,7 +386,7 @@ function syncAllData(ss, data) {
       '=IFERROR(VLOOKUP(A' + r + ', Master_Materials!$A:$E, 4, FALSE), 0)',
       '=IFERROR(SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A' + r + ', Stock_Transactions!$B:$B, "Receive"), 0)',
       '=IFERROR(SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A' + r + ', Stock_Transactions!$B:$B, "Actual Usage"), 0)',
-      '=IFERROR(SUMPRODUCT((BOM_Recipe!$C$2:$C = A' + r + ') * (BOM_Recipe!$D$2:$D), SUMIFS(Daily_Production!$C:$C, Daily_Production!$B:$B, BOM_Recipe!$A$2:$A)), 0)',
+      '=IFERROR(SUMPRODUCT(SUMIF(Daily_Production!$B:$B, BOM_Recipe!$A$2:$A, Daily_Production!$C:$C), (BOM_Recipe!$C$2:$C = A' + r + ') * IFERROR(N(BOM_Recipe!$D$2:$D), 0)), 0)',
       '=D' + r + ' + E' + r + ' - F' + r,
       '=F' + r + ' - G' + r,
       '=IF(A' + r + '="", "", IF(H' + r + ' <= IFERROR(VLOOKUP(A' + r + ', Master_Materials!$A:$E, 5, FALSE), 0), "⚠️ ใกล้หมด", "ปกติ"))'
@@ -679,7 +679,7 @@ export async function initializeSheetDataAndFormulas(
         `=XLOOKUP(A${rowNum}, Master_Materials!$A:$A, Master_Materials!$D:$D, 0)`,
         `=SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A${rowNum}, Stock_Transactions!$B:$B, "Receive")`,
         `=SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A${rowNum}, Stock_Transactions!$B:$B, "Actual Usage")`,
-        `=IFERROR(SUMPRODUCT((BOM_Recipe!$C$2:$C = A${rowNum}) * (BOM_Recipe!$D$2:$D), SUMIFS(Daily_Production!$C:$C, Daily_Production!$B:$B, BOM_Recipe!$A$2:$A)), 0)`,
+        `=IFERROR(SUMPRODUCT(SUMIF(Daily_Production!$B:$B, BOM_Recipe!$A$2:$A, Daily_Production!$C:$C), (BOM_Recipe!$C$2:$C = A${rowNum}) * IFERROR(N(BOM_Recipe!$D$2:$D), 0)), 0)`,
         `=D${rowNum} + E${rowNum} - F${rowNum}`,
         `=F${rowNum} - G${rowNum}`,
         `=IF(A${rowNum}="", "", IF(H${rowNum} <= XLOOKUP(A${rowNum}, Master_Materials!$A:$A, Master_Materials!$E:$E, 0), "⚠️ วัตถุดิบใกล้หมด (ต้องสั่งเพิ่ม)", "ปกติ"))`,
@@ -708,7 +708,30 @@ export async function initializeSheetDataAndFormulas(
     });
   });
 
-  // Batch update all data
+  // 1. Batch clear all existing ranges first so deleted rows never linger
+  try {
+    await fetch(`${SHEETS_API_BASE}/${spreadsheetId}/values:batchClear`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ranges: [
+          'Master_Materials!A1:Z',
+          'BOM_Recipe!A1:Z',
+          'Daily_Production!A1:Z',
+          'Stock_Transactions!A1:Z',
+          'Monthly_Stock_Summary!A1:Z',
+          'Monthly_Stock_Count!A1:Z',
+        ],
+      }),
+    });
+  } catch (clearErr) {
+    console.warn('Batch clear sheet notice:', clearErr);
+  }
+
+  // 2. Batch update all data
   const data = [
     { range: 'Master_Materials!A1', values: materialsRows },
     { range: 'BOM_Recipe!A1', values: recipeRows },

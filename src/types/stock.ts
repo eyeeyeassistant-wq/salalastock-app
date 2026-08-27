@@ -38,6 +38,7 @@ export interface StockTransaction {
   Qty: number;
   Recorder: string;
   Note: string;
+  productionId?: string;
 }
 
 export interface PhysicalStockCountItem {

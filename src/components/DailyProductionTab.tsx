@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   DailyProduction,
   BOMRecipe,
   MasterMaterial,
+  StockTransaction,
 } from '../types/stock';
 import {
   CalendarCheck,
@@ -17,23 +18,26 @@ import {
   Edit2,
   Trash2,
   X,
+  RotateCcw,
 } from 'lucide-react';
 
 interface DailyProductionTabProps {
   productions: DailyProduction[];
   recipes: BOMRecipe[];
   materials: MasterMaterial[];
+  transactions?: StockTransaction[];
   onAddProduction: (prod: DailyProduction) => void;
   onAutoDeductBatch: (production: DailyProduction) => void;
   onOpenNewProdModal: () => void;
   onEditProduction?: (production: DailyProduction, index: number) => void;
-  onDeleteProduction?: (index: number) => void;
+  onDeleteProduction?: (target: number | DailyProduction, deleteLinkedTxs?: boolean) => void;
 }
 
 export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
   productions,
   recipes,
   materials,
+  transactions = [],
   onAddProduction,
   onAutoDeductBatch,
   onOpenNewProdModal,
@@ -43,6 +47,7 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
   const [selectedProduct, setSelectedProduct] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('');
   const [prodToDelete, setProdToDelete] = useState<{ index: number; prod: DailyProduction } | null>(null);
+  const [revertDeductedStock, setRevertDeductedStock] = useState<boolean>(true);
 
   // Extract unique products
   const uniqueProducts = Array.from(
@@ -147,62 +152,74 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
-              {filteredProductions.map((p, idx) => (
-                <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3.5 font-mono text-slate-700 font-medium whitespace-nowrap text-xs sm:text-sm">
-                    {p.Date}
-                  </td>
-                  <td className="px-4 py-3.5 font-mono font-bold text-slate-900 text-xs sm:text-sm">
-                    {p.Product_Code}
-                  </td>
-                  <td className="px-4 py-3.5 font-medium text-slate-900 text-xs sm:text-sm">
-                    {getProductName(p.Product_Code)}
-                  </td>
-                  <td className="px-4 py-3.5 text-right font-mono font-bold text-blue-700 text-xs sm:text-sm bg-blue-50/30">
-                    {p.Produced_Qty.toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3.5 text-right font-mono text-slate-700 text-xs sm:text-sm">
-                    {(p.Dispatch_Branch_A || 0).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3.5 text-right font-mono text-slate-700 text-xs sm:text-sm">
-                    {(p.Dispatch_Branch_B || 0).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-900 bg-slate-100/50 text-xs sm:text-sm">
-                    {(p.Total_Dispatched || (p.Dispatch_Branch_A || 0) + (p.Dispatch_Branch_B || 0)).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3.5 text-center">
-                    <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
-                      {onEditProduction && (
+              {filteredProductions.map((p, filteredIdx) => {
+                const originalIndex = productions.findIndex(
+                  (item) => (p.id && item.id ? item.id === p.id : (
+                    item.Date === p.Date &&
+                    (item.Product_Code || '').trim().toUpperCase() === (p.Product_Code || '').trim().toUpperCase() &&
+                    Number(item.Produced_Qty) === Number(p.Produced_Qty)
+                  ))
+                );
+                const targetIdx = originalIndex >= 0 ? originalIndex : filteredIdx;
+                const rowKey = p.id || `prod_${p.Date}_${p.Product_Code}_${filteredIdx}`;
+
+                return (
+                  <tr key={rowKey} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3.5 font-mono text-slate-700 font-medium whitespace-nowrap text-xs sm:text-sm">
+                      {p.Date}
+                    </td>
+                    <td className="px-4 py-3.5 font-mono font-bold text-slate-900 text-xs sm:text-sm">
+                      {p.Product_Code}
+                    </td>
+                    <td className="px-4 py-3.5 font-medium text-slate-900 text-xs sm:text-sm">
+                      {getProductName(p.Product_Code)}
+                    </td>
+                    <td className="px-4 py-3.5 text-right font-mono font-bold text-blue-700 text-xs sm:text-sm bg-blue-50/30">
+                      {p.Produced_Qty.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3.5 text-right font-mono text-slate-700 text-xs sm:text-sm">
+                      {(p.Dispatch_Branch_A || 0).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3.5 text-right font-mono text-slate-700 text-xs sm:text-sm">
+                      {(p.Dispatch_Branch_B || 0).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-900 bg-slate-100/50 text-xs sm:text-sm">
+                      {(p.Total_Dispatched || (p.Dispatch_Branch_A || 0) + (p.Dispatch_Branch_B || 0)).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3.5 text-center">
+                      <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
+                        {onEditProduction && (
+                          <button
+                            onClick={() => onEditProduction(p, targetIdx)}
+                            title="แก้ไขรายการผลิตนี้"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors min-h-[32px]"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                            <span>แก้ไข</span>
+                          </button>
+                        )}
                         <button
-                          onClick={() => onEditProduction(p, idx)}
-                          title="แก้ไขรายการผลิตนี้"
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors min-h-[32px]"
+                          onClick={() => onAutoDeductBatch(p)}
+                          title="กดเพื่อตัดสต็อกวัตถุดิบตามสูตร BOM x ยอดผลิตลงใน Stock_Transactions"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 transition-colors min-h-[32px]"
                         >
-                          <Edit2 className="w-3.5 h-3.5" />
-                          <span>แก้ไข</span>
+                          <Zap className="w-3.5 h-3.5 text-amber-600" />
+                          <span>ตัดสต็อก</span>
                         </button>
-                      )}
-                      <button
-                        onClick={() => onAutoDeductBatch(p)}
-                        title="กดเพื่อตัดสต็อกวัตถุดิบตามสูตร BOM x ยอดผลิตลงใน Stock_Transactions"
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 transition-colors min-h-[32px]"
-                      >
-                        <Zap className="w-3.5 h-3.5 text-amber-600" />
-                        <span>ตัดสต็อก</span>
-                      </button>
-                      {onDeleteProduction && (
-                        <button
-                          onClick={() => setProdToDelete({ index: idx, prod: p })}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors min-h-[32px] min-w-[32px] flex items-center justify-center"
-                          title="ลบรายการนี้"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        {onDeleteProduction && (
+                          <button
+                            onClick={() => setProdToDelete({ index: targetIdx, prod: p })}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors min-h-[32px] min-w-[32px] flex items-center justify-center"
+                            title="ลบรายการนี้"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -238,7 +255,7 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
               </button>
             </div>
 
-            <div className="p-5 space-y-2.5">
+            <div className="p-5 space-y-3">
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs space-y-1.5">
                 <div className="flex justify-between">
                   <span className="text-slate-500">วันที่ผลิต:</span>
@@ -263,6 +280,67 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
                   </span>
                 </div>
               </div>
+
+              {/* Linked Auto-Deducted Transactions Section */}
+              {(() => {
+                const prod = prodToDelete.prod;
+                const pCode = (prod.Product_Code || '').trim().toUpperCase();
+                const linkedTxs = (transactions || []).filter((t) => {
+                  if (prod.id && t.productionId === prod.id) return true;
+                  const isDateMatch = t.Date === prod.Date;
+                  const isUsage = t.Type === 'Actual Usage';
+                  const isAutoDeductNote =
+                    (t.Recorder && (t.Recorder.toLowerCase().includes('auto') || t.Recorder.includes('อัตโนมัติ'))) ||
+                    (t.Note && (t.Note.includes('ตัดสต็อก') || t.Note.includes('BOM') || t.Note.includes(pCode) || (prod.Product_Code && t.Note.includes(prod.Product_Code))));
+                  return isDateMatch && isUsage && isAutoDeductNote;
+                });
+
+                if (linkedTxs.length === 0) return null;
+
+                return (
+                  <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3 text-xs space-y-2">
+                    <div className="flex items-start gap-2">
+                      <RotateCcw className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-bold text-amber-900">
+                          ตรวจพบรายการตัดสต็อกวัตถุดิบ ({linkedTxs.length} รายการ)
+                        </div>
+                        <div className="text-slate-600 text-[11px] mt-0.5">
+                          ยอดนี้ถูกหักออกจากสต็อกไปแล้วเมื่อบันทึกการผลิต
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white/90 border border-amber-100 rounded-lg p-2 max-h-24 overflow-y-auto space-y-1">
+                      {linkedTxs.map((tx, idx) => {
+                        const mat = materials.find((m) => m.RM_Code === tx.RM_Code);
+                        return (
+                          <div key={idx} className="flex justify-between items-center text-[11px]">
+                            <span className="text-slate-700 font-medium">
+                              {mat ? `${mat.RM_Name} (${tx.RM_Code})` : tx.RM_Code}
+                            </span>
+                            <span className="font-mono font-bold text-rose-600">
+                              -{tx.Qty.toLocaleString()} {mat?.Unit || 'หน่วย'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <label className="flex items-center gap-2 cursor-pointer pt-1">
+                      <input
+                        type="checkbox"
+                        checked={revertDeductedStock}
+                        onChange={(e) => setRevertDeductedStock(e.target.checked)}
+                        className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-4 h-4"
+                      />
+                      <span className="text-xs font-bold text-amber-950">
+                        ยกเลิกการตัดสต็อก & คืนยอดวัตถุดิบเข้าคลังอัตโนมัติ
+                      </span>
+                    </label>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2.5">
@@ -277,7 +355,7 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
                 type="button"
                 onClick={() => {
                   if (onDeleteProduction) {
-                    onDeleteProduction(prodToDelete.index);
+                    onDeleteProduction(prodToDelete.prod, revertDeductedStock);
                   }
                   setProdToDelete(null);
                 }}

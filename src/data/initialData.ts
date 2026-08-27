@@ -37,6 +37,7 @@ export const INITIAL_RECIPES: BOMRecipe[] = [
 
 export const INITIAL_DAILY_PRODUCTION: DailyProduction[] = [
   {
+    id: 'prod_001',
     Date: '2026-08-01',
     Product_Code: 'P001',
     Produced_Qty: 50,
@@ -45,6 +46,7 @@ export const INITIAL_DAILY_PRODUCTION: DailyProduction[] = [
     Total_Dispatched: 50,
   },
   {
+    id: 'prod_002',
     Date: '2026-08-02',
     Product_Code: 'P002',
     Produced_Qty: 200,
@@ -53,6 +55,7 @@ export const INITIAL_DAILY_PRODUCTION: DailyProduction[] = [
     Total_Dispatched: 200,
   },
   {
+    id: 'prod_003',
     Date: '2026-08-03',
     Product_Code: 'P003',
     Produced_Qty: 300,
@@ -61,6 +64,7 @@ export const INITIAL_DAILY_PRODUCTION: DailyProduction[] = [
     Total_Dispatched: 300,
   },
   {
+    id: 'prod_004',
     Date: '2026-08-04',
     Product_Code: 'P001',
     Produced_Qty: 40,
@@ -69,6 +73,7 @@ export const INITIAL_DAILY_PRODUCTION: DailyProduction[] = [
     Total_Dispatched: 40,
   },
   {
+    id: 'prod_005',
     Date: '2026-08-05',
     Product_Code: 'P002',
     Produced_Qty: 150,
@@ -80,42 +85,42 @@ export const INITIAL_DAILY_PRODUCTION: DailyProduction[] = [
 
 export const INITIAL_TRANSACTIONS: StockTransaction[] = [
   // Receive (รับเข้า)
-  { Date: '2026-08-01', Type: 'Receive', RM_Code: 'RM001', Qty: 150, Recorder: 'สมศักดิ์ คลังสินค้า', Note: 'ล็อตรับเข้าต้นเดือน PO#101' },
-  { Date: '2026-08-01', Type: 'Receive', RM_Code: 'RM002', Qty: 100, Recorder: 'สมศักดิ์ คลังสินค้า', Note: 'ล็อตรับเข้าต้นเดือน PO#101' },
-  { Date: '2026-08-01', Type: 'Receive', RM_Code: 'RM003', Qty: 60, Recorder: 'สมศักดิ์ คลังสินค้า', Note: 'เนยสดอิมพอร์ต PO#102' },
-  { Date: '2026-08-01', Type: 'Receive', RM_Code: 'RM004', Qty: 80, Recorder: 'สมศักดิ์ คลังสินค้า', Note: 'นมสดส่งตรงฟาร์ม' },
-  { Date: '2026-08-02', Type: 'Receive', RM_Code: 'RM005', Qty: 20, Recorder: 'สมศักดิ์ คลังสินค้า', Note: 'โกโก้พรีเมียม' },
-  { Date: '2026-08-02', Type: 'Receive', RM_Code: 'RM006', Qty: 30, Recorder: 'สมศักดิ์ คลังสินค้า', Note: 'เมล็ดกาแฟอาราบิก้า' },
-  { Date: '2026-08-02', Type: 'Receive', RM_Code: 'RM007', Qty: 20, Recorder: 'สมศักดิ์ คลังสินค้า', Note: 'ไข่ไก่สด' },
-  { Date: '2026-08-02', Type: 'Receive', RM_Code: 'RM008', Qty: 500, Recorder: 'สมศักดิ์ คลังสินค้า', Note: 'กล่องและแก้ว' },
+  { id: 'tx_rec_001', Date: '2026-08-01', Type: 'Receive', RM_Code: 'RM001', Qty: 150, Recorder: 'สมศักดิ์ คลังสินค้า', Note: 'ล็อตรับเข้าต้นเดือน PO#101' },
+  { id: 'tx_rec_002', Date: '2026-08-01', Type: 'Receive', RM_Code: 'RM002', Qty: 100, Recorder: 'สมศักดิ์ คลังสินค้า', Note: 'ล็อตรับเข้าต้นเดือน PO#101' },
+  { id: 'tx_rec_003', Date: '2026-08-01', Type: 'Receive', RM_Code: 'RM003', Qty: 60, Recorder: 'สมศักดิ์ คลังสินค้า', Note: 'เนยสดอิมพอร์ต PO#102' },
+  { id: 'tx_rec_004', Date: '2026-08-01', Type: 'Receive', RM_Code: 'RM004', Qty: 80, Recorder: 'สมศักดิ์ คลังสินค้า', Note: 'นมสดส่งตรงฟาร์ม' },
+  { id: 'tx_rec_005', Date: '2026-08-02', Type: 'Receive', RM_Code: 'RM005', Qty: 20, Recorder: 'สมศักดิ์ คลังสินค้า', Note: 'โกโก้พรีเมียม' },
+  { id: 'tx_rec_006', Date: '2026-08-02', Type: 'Receive', RM_Code: 'RM006', Qty: 30, Recorder: 'สมศักดิ์ คลังสินค้า', Note: 'เมล็ดกาแฟอาราบิก้า' },
+  { id: 'tx_rec_007', Date: '2026-08-02', Type: 'Receive', RM_Code: 'RM007', Qty: 20, Recorder: 'สมศักดิ์ คลังสินค้า', Note: 'ไข่ไก่สด' },
+  { id: 'tx_rec_008', Date: '2026-08-02', Type: 'Receive', RM_Code: 'RM008', Qty: 500, Recorder: 'สมศักดิ์ คลังสินค้า', Note: 'กล่องและแก้ว' },
 
   // Actual Usage (เบิกใช้จริง - พนักงานกรอก)
   // RM001 Expected ~ 50*0.25 + 200*0.08 + 40*0.25 + 150*0.08 = 12.5 + 16 + 10 + 12 = 50.5 kg
-  { Date: '2026-08-01', Type: 'Actual Usage', RM_Code: 'RM001', Qty: 25, Recorder: 'เชฟแมน ครัวกลาง', Note: 'เบิกผสมเค้กช็อกโกแลต' },
-  { Date: '2026-08-03', Type: 'Actual Usage', RM_Code: 'RM001', Qty: 28.5, Recorder: 'เชฟแมน ครัวกลาง', Note: 'เบิกทำครัวซองต์ (มีผงแป้งหกเสียหาย)' }, // Overused variance!
+  { id: 'tx_use_001', productionId: 'prod_001', Date: '2026-08-01', Type: 'Actual Usage', RM_Code: 'RM001', Qty: 25, Recorder: 'เชฟแมน ครัวกลาง', Note: 'เบิกผสมเค้กช็อกโกแลต (ตัดสต็อกตามยอดผลิต P001)' },
+  { id: 'tx_use_002', productionId: 'prod_002', Date: '2026-08-03', Type: 'Actual Usage', RM_Code: 'RM001', Qty: 28.5, Recorder: 'เชฟแมน ครัวกลาง', Note: 'เบิกทำครัวซองต์ (ตัดสต็อกตามยอดผลิต P002 - มีผงแป้งหกเสียหาย)' },
 
   // RM002 Sugar: Expected ~ 50*0.2 + 200*0.02 + 300*0.015 + 40*0.2 + 150*0.02 = 10 + 4 + 4.5 + 8 + 3 = 29.5 kg
-  { Date: '2026-08-02', Type: 'Actual Usage', RM_Code: 'RM002', Qty: 15, Recorder: 'วรรณา ฝ่ายผสม', Note: 'เบิกทำเบเกอรี่' },
-  { Date: '2026-08-04', Type: 'Actual Usage', RM_Code: 'RM002', Qty: 14.5, Recorder: 'วรรณา ฝ่ายผสม', Note: 'เบิกปรุงกาแฟและเค้ก' },
+  { id: 'tx_use_003', productionId: 'prod_001', Date: '2026-08-02', Type: 'Actual Usage', RM_Code: 'RM002', Qty: 15, Recorder: 'วรรณา ฝ่ายผสม', Note: 'เบิกทำเบเกอรี่ (ตัดสต็อกตามยอดผลิต P001)' },
+  { id: 'tx_use_004', productionId: 'prod_003', Date: '2026-08-04', Type: 'Actual Usage', RM_Code: 'RM002', Qty: 14.5, Recorder: 'วรรณา ฝ่ายผสม', Note: 'เบิกปรุงกาแฟและเค้ก (ตัดสต็อกตามยอดผลิต P003)' },
 
   // RM003 Butter: Expected ~ 50*0.15 + 200*0.05 + 40*0.15 + 150*0.05 = 7.5 + 10 + 6 + 7.5 = 31 kg
-  { Date: '2026-08-01', Type: 'Actual Usage', RM_Code: 'RM003', Qty: 15, Recorder: 'เชฟแมน ครัวกลาง', Note: 'เบิกเนยทำเค้ก' },
-  { Date: '2026-08-03', Type: 'Actual Usage', RM_Code: 'RM003', Qty: 18, Recorder: 'เชฟแมน ครัวกลาง', Note: 'เบิกเนยรีดแป้งครัวซองต์ (เกินเกณฑ์เล็กน้อย)' },
+  { id: 'tx_use_005', productionId: 'prod_001', Date: '2026-08-01', Type: 'Actual Usage', RM_Code: 'RM003', Qty: 15, Recorder: 'เชฟแมน ครัวกลาง', Note: 'เบิกเนยทำเค้ก (ตัดสต็อกตามยอดผลิต P001)' },
+  { id: 'tx_use_006', productionId: 'prod_002', Date: '2026-08-03', Type: 'Actual Usage', RM_Code: 'RM003', Qty: 18, Recorder: 'เชฟแมน ครัวกลาง', Note: 'เบิกเนยรีดแป้งครัวซองต์ (ตัดสต็อกตามยอดผลิต P002)' },
 
   // RM004 Milk: Expected ~ 50*0.20 + 200*0.04 + 300*0.15 + 40*0.20 + 150*0.04 = 10 + 8 + 45 + 8 + 6 = 77 L
-  { Date: '2026-08-01', Type: 'Actual Usage', RM_Code: 'RM004', Qty: 35, Recorder: 'กมล ชงเครื่องดื่ม', Note: 'เบิกใช้นมสดสัปดาห์ที่ 1' },
-  { Date: '2026-08-04', Type: 'Actual Usage', RM_Code: 'RM004', Qty: 44, Recorder: 'กมล ชงเครื่องดื่ม', Note: 'เบิกใช้นมสดสัปดาห์ที่ 2' },
+  { id: 'tx_use_007', productionId: 'prod_001', Date: '2026-08-01', Type: 'Actual Usage', RM_Code: 'RM004', Qty: 35, Recorder: 'กมล ชงเครื่องดื่ม', Note: 'เบิกใช้นมสดสัปดาห์ที่ 1 (ตัดสต็อกตามยอดผลิต P001)' },
+  { id: 'tx_use_008', productionId: 'prod_003', Date: '2026-08-04', Type: 'Actual Usage', RM_Code: 'RM004', Qty: 44, Recorder: 'กมล ชงเครื่องดื่ม', Note: 'เบิกใช้นมสดสัปดาห์ที่ 2 (ตัดสต็อกตามยอดผลิต P003)' },
 
   // RM005 Cocoa: Expected ~ 50*0.10 + 40*0.10 = 9 kg
-  { Date: '2026-08-01', Type: 'Actual Usage', RM_Code: 'RM005', Qty: 9, Recorder: 'เชฟแมน ครัวกลาง', Note: 'เบิกผงโกโก้' },
+  { id: 'tx_use_009', productionId: 'prod_001', Date: '2026-08-01', Type: 'Actual Usage', RM_Code: 'RM005', Qty: 9, Recorder: 'เชฟแมน ครัวกลาง', Note: 'เบิกผงโกโก้ (ตัดสต็อกตามยอดผลิต P001)' },
 
   // RM006 Coffee: Expected ~ 300*0.02 = 6 kg
-  { Date: '2026-08-03', Type: 'Actual Usage', RM_Code: 'RM006', Qty: 6.2, Recorder: 'กมล บาริสต้า', Note: 'เบิกเมล็ดกาแฟคั่ว' },
+  { id: 'tx_use_010', productionId: 'prod_003', Date: '2026-08-03', Type: 'Actual Usage', RM_Code: 'RM006', Qty: 6.2, Recorder: 'กมล บาริสต้า', Note: 'เบิกเมล็ดกาแฟคั่ว (ตัดสต็อกตามยอดผลิต P003)' },
 
   // RM007 Eggs: Expected ~ 50*0.10 + 40*0.10 = 9 trays
-  { Date: '2026-08-01', Type: 'Actual Usage', RM_Code: 'RM007', Qty: 10, Recorder: 'เชฟแมน ครัวกลาง', Note: 'เบิกไข่ไก่ (มีแตกชำรุด 1 แผง)' },
+  { id: 'tx_use_011', productionId: 'prod_001', Date: '2026-08-01', Type: 'Actual Usage', RM_Code: 'RM007', Qty: 10, Recorder: 'เชฟแมน ครัวกลาง', Note: 'เบิกไข่ไก่ (ตัดสต็อกตามยอดผลิต P001)' },
 
   // RM008 Packaging: Expected ~ 50 + 200 + 300 + 40 + 150 = 740 pcs
-  { Date: '2026-08-01', Type: 'Actual Usage', RM_Code: 'RM008', Qty: 400, Recorder: 'สมศักดิ์ แพ็กเกจ', Note: 'เบิกกล่องและถ้วยแก้ว' },
-  { Date: '2026-08-04', Type: 'Actual Usage', RM_Code: 'RM008', Qty: 350, Recorder: 'สมศักดิ์ แพ็กเกจ', Note: 'เบิกกล่องรอบ 2' },
+  { id: 'tx_use_012', productionId: 'prod_001', Date: '2026-08-01', Type: 'Actual Usage', RM_Code: 'RM008', Qty: 400, Recorder: 'สมศักดิ์ แพ็กเกจ', Note: 'เบิกกล่องและถ้วยแก้ว (ตัดสต็อกตามยอดผลิต P001)' },
+  { id: 'tx_use_013', productionId: 'prod_003', Date: '2026-08-04', Type: 'Actual Usage', RM_Code: 'RM008', Qty: 350, Recorder: 'สมศักดิ์ แพ็กเกจ', Note: 'เบิกกล่องรอบ 2 (ตัดสต็อกตามยอดผลิต P003)' },
 ];

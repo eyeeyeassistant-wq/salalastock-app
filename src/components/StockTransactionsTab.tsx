@@ -23,7 +23,7 @@ interface StockTransactionsTabProps {
   materials: MasterMaterial[];
   onOpenNewTxModal: (initialType?: TransactionType) => void;
   onEditTransaction?: (transaction: StockTransaction, index: number) => void;
-  onDeleteTransaction?: (index: number) => void;
+  onDeleteTransaction?: (target: number | StockTransaction) => void;
 }
 
 export const StockTransactionsTab: React.FC<StockTransactionsTabProps> = ({
@@ -182,10 +182,16 @@ export const StockTransactionsTab: React.FC<StockTransactionsTabProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
-              {filteredTransactions.map((tx, idx) => {
+              {filteredTransactions.map((tx, filteredIdx) => {
                 const isReceive = tx.Type === 'Receive';
+                const originalIndex = transactions.findIndex(
+                  (item) => (tx.id && item.id ? item.id === tx.id : item === tx)
+                );
+                const targetIdx = originalIndex >= 0 ? originalIndex : filteredIdx;
+                const rowKey = tx.id || `tx_${tx.Date}_${tx.RM_Code}_${tx.Type}_${filteredIdx}`;
+
                 return (
-                  <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                  <tr key={rowKey} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3.5 font-mono text-slate-700 font-medium whitespace-nowrap text-xs sm:text-sm">
                       {tx.Date}
                     </td>
@@ -229,7 +235,7 @@ export const StockTransactionsTab: React.FC<StockTransactionsTabProps> = ({
                       <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
                         {onEditTransaction && (
                           <button
-                            onClick={() => onEditTransaction(tx, idx)}
+                            onClick={() => onEditTransaction(tx, targetIdx)}
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors min-h-[32px]"
                             title="แก้ไขรายการนี้"
                           >
@@ -239,7 +245,7 @@ export const StockTransactionsTab: React.FC<StockTransactionsTabProps> = ({
                         )}
                         {onDeleteTransaction && (
                           <button
-                            onClick={() => setTxToDelete({ index: idx, tx })}
+                            onClick={() => setTxToDelete({ index: targetIdx, tx })}
                             className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors min-h-[32px] min-w-[32px] flex items-center justify-center"
                             title="ลบรายการนี้"
                           >
@@ -325,7 +331,7 @@ export const StockTransactionsTab: React.FC<StockTransactionsTabProps> = ({
                 type="button"
                 onClick={() => {
                   if (onDeleteTransaction) {
-                    onDeleteTransaction(txToDelete.index);
+                    onDeleteTransaction(txToDelete.tx);
                   }
                   setTxToDelete(null);
                 }}

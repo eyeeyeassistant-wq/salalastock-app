@@ -40,37 +40,48 @@ export const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
 }) => {
   if (!rmCode) return null;
 
-  const material = materials.find((m) => m.RM_Code === rmCode);
-  const summary = summaries.find((s) => s.RM_Code === rmCode);
+  const normalizedRmCode = (rmCode || '').trim().toUpperCase();
+  const material = materials.find((m) => (m.RM_Code || '').trim().toUpperCase() === normalizedRmCode);
+  const summary = summaries.find((s) => (s.RM_Code || '').trim().toUpperCase() === normalizedRmCode);
 
   if (!material || !summary) return null;
 
   // Filter transactions for this RM_Code
   const rmTransactions = transactions
-    .filter((t) => t.RM_Code === rmCode)
+    .filter((t) => (t.RM_Code || '').trim().toUpperCase() === normalizedRmCode)
     .sort((a, b) => new Date(b.Date).getTime() - new Date(a.Date).getTime());
 
   // Filter recipes using this RM_Code
-  const matchedRecipes = recipes.filter((r) => r.RM_Code === rmCode);
+  const matchedRecipes = recipes.filter(
+    (r) => (r.RM_Code || '').trim().toUpperCase() === normalizedRmCode
+  );
 
   // Expected usage breakdown by production
-  const productionBreakdown = productions
-    .map((prod) => {
-      const match = recipes.find(
-        (r) => r.Product_Code === prod.Product_Code && r.RM_Code === rmCode
-      );
-      if (!match) return null;
-      const expected = prod.Produced_Qty * match.Standard_Qty;
-      return {
+  const productionBreakdown: any[] = [];
+  productions.forEach((prod) => {
+    const pCode = (prod.Product_Code || '').trim().toUpperCase();
+    const prodQty = Number(prod.Produced_Qty) || 0;
+    if (prodQty <= 0) return;
+
+    const matches = recipes.filter(
+      (r) =>
+        (r.Product_Code || '').trim().toUpperCase() === pCode &&
+        (r.RM_Code || '').trim().toUpperCase() === normalizedRmCode
+    );
+
+    matches.forEach((match) => {
+      const stdQty = Number(match.Standard_Qty) || 0;
+      const expected = prodQty * stdQty;
+      productionBreakdown.push({
         date: prod.Date,
         productCode: prod.Product_Code,
-        productName: match.Product_Name,
-        producedQty: prod.Produced_Qty,
-        standardQty: match.Standard_Qty,
+        productName: match.Product_Name || prod.Product_Code,
+        producedQty: prodQty,
+        standardQty: stdQty,
         expectedUsage: expected,
-      };
-    })
-    .filter(Boolean);
+      });
+    });
+  });
 
   const isOverused = summary.Variance > 0.001;
 

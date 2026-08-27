@@ -22,6 +22,8 @@ import {
   calculateProductionRowTotals,
   sanitizeMaterials,
   sanitizeRecipes,
+  sanitizeProductions,
+  sanitizeTransactions,
 } from './utils/calculations';
 import {
   initAuth,
@@ -122,7 +124,10 @@ export default function App() {
     const saved = localStorage.getItem('stock_productions');
     if (saved !== null) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return sanitizeProductions(parsed);
+        }
       } catch (e) {
         return [];
       }
@@ -134,7 +139,10 @@ export default function App() {
     const saved = localStorage.getItem('stock_transactions');
     if (saved !== null) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return sanitizeTransactions(parsed);
+        }
       } catch (e) {
         return [];
       }
@@ -439,16 +447,134 @@ export default function App() {
     triggerAutoSync({ recipes: nextRecipes });
   };
 
-  const handleDeleteProduction = (index: number) => {
-    const nextProds = productions.filter((_, idx) => idx !== index);
+  const handleDeleteProduction = (
+    target: number | string | DailyProduction,
+    deleteLinkedStockTxs: boolean = true
+  ) => {
+    let targetProd: DailyProduction | undefined;
+    let targetIdx = -1;
+
+    if (typeof target === 'number') {
+      targetIdx = target;
+      targetProd = productions[target];
+    } else if (typeof target === 'string') {
+      targetIdx = productions.findIndex((p) => p.id === target);
+      if (targetIdx !== -1) targetProd = productions[targetIdx];
+    } else if (target) {
+      if (target.id) {
+        targetIdx = productions.findIndex((p) => p.id === target.id);
+      }
+      if (targetIdx === -1) {
+        targetIdx = productions.findIndex(
+          (p) =>
+            p.Date === target.Date &&
+            (p.Product_Code || '').trim().toUpperCase() === (target.Product_Code || '').trim().toUpperCase() &&
+            Number(p.Produced_Qty) === Number(target.Produced_Qty)
+        );
+      }
+      if (targetIdx !== -1) {
+        targetProd = productions[targetIdx];
+      } else {
+        targetProd = target;
+      }
+    }
+
+    let nextProds: DailyProduction[];
+    if (targetIdx >= 0 && targetIdx < productions.length) {
+      nextProds = productions.filter((_, idx) => idx !== targetIdx);
+    } else if (targetProd) {
+      nextProds = productions.filter((p) => {
+        if (targetProd!.id && p.id) return p.id !== targetProd!.id;
+        return !(
+          p.Date === targetProd!.Date &&
+          (p.Product_Code || '').trim().toUpperCase() === (targetProd!.Product_Code || '').trim().toUpperCase() &&
+          Number(p.Produced_Qty) === Number(targetProd!.Produced_Qty)
+        );
+      });
+    } else {
+      nextProds = [...productions];
+    }
+
+    let nextTxs = [...transactions];
+    let removedTxCount = 0;
+
+    if (deleteLinkedStockTxs && targetProd) {
+      const prodId = targetProd.id;
+      const pCode = (targetProd.Product_Code || '').trim().toUpperCase();
+      const prodDate = targetProd.Date;
+
+      // Find recipe ingredients for this product to ensure all auto-deductions are matched
+      const prodRecipes = recipes.filter(
+        (r) => (r.Product_Code || '').trim().toUpperCase() === pCode
+      );
+      const recipeRmCodes = new Set(prodRecipes.map((r) => (r.RM_Code || '').trim().toUpperCase()));
+
+      nextTxs = transactions.filter((t) => {
+        // 1. Direct match by productionId
+        if (prodId && t.productionId === prodId) {
+          removedTxCount++;
+          return false;
+        }
+
+        // 2. Match by signature (auto-deducted usage on same date with matching product/recipe)
+        const isDateMatch = t.Date === prodDate;
+        const isUsage = t.Type === 'Actual Usage';
+        const isAutoDeduct =
+          (t.Recorder && (t.Recorder.toLowerCase().includes('auto') || t.Recorder.includes('อัตโนมัติ'))) ||
+          (t.Note && (t.Note.includes('ตัดสต็อก') || t.Note.includes('BOM') || t.Note.includes(pCode) || (targetProd && targetProd.Product_Code && t.Note.includes(targetProd.Product_Code))));
+        const isRmMatch = recipeRmCodes.size > 0 && recipeRmCodes.has((t.RM_Code || '').trim().toUpperCase());
+
+        if (isDateMatch && isUsage && (isAutoDeduct || (isRmMatch && isAutoDeduct))) {
+          removedTxCount++;
+          return false;
+        }
+
+        return true;
+      });
+    }
+
+    // Update state and persistence immediately
     setProductions(nextProds);
     localStorage.setItem('stock_productions', JSON.stringify(nextProds));
-    showNotification('🗑️ ลบรายการผลิตเรียบร้อยแล้ว');
-    triggerAutoSync({ productions: nextProds });
+    setTransactions(nextTxs);
+    localStorage.setItem('stock_transactions', JSON.stringify(nextTxs));
+
+    if (removedTxCount > 0) {
+      showNotification(`🗑️ ลบยอดผลิตและยกเลิกการตัดสต็อกวัตถุดิบ ${removedTxCount} รายการเรียบร้อยแล้ว`);
+    } else {
+      showNotification('🗑️ ลบรายการผลิตเรียบร้อยแล้ว');
+    }
+
+    triggerAutoSync({ productions: nextProds, transactions: nextTxs });
   };
 
-  const handleDeleteTransaction = (index: number) => {
-    const nextTxs = transactions.filter((_, idx) => idx !== index);
+  const handleDeleteTransaction = (target: number | string | StockTransaction) => {
+    let nextTxs: StockTransaction[];
+    if (typeof target === 'number') {
+      nextTxs = transactions.filter((_, idx) => idx !== target);
+    } else if (typeof target === 'string') {
+      nextTxs = transactions.filter((t) => t.id !== target);
+    } else if (target) {
+      if (target.id) {
+        nextTxs = transactions.filter((t) => t.id !== target.id);
+      } else {
+        const targetIdx = transactions.findIndex(
+          (t) =>
+            t.Date === target.Date &&
+            t.Type === target.Type &&
+            (t.RM_Code || '').trim().toUpperCase() === (target.RM_Code || '').trim().toUpperCase() &&
+            Number(t.Qty) === Number(target.Qty)
+        );
+        if (targetIdx !== -1) {
+          nextTxs = transactions.filter((_, idx) => idx !== targetIdx);
+        } else {
+          nextTxs = transactions.filter((t) => t !== target);
+        }
+      }
+    } else {
+      nextTxs = [...transactions];
+    }
+
     setTransactions(nextTxs);
     localStorage.setItem('stock_transactions', JSON.stringify(nextTxs));
     showNotification('🗑️ ลบรายการประวัติสต๊อกเรียบร้อยแล้ว');
@@ -549,11 +675,11 @@ export default function App() {
                 setRecipes(loadedRecipes);
               }
               if (sheetData.productions && sheetData.productions.length > 0) {
-                loadedProds = sheetData.productions;
+                loadedProds = sanitizeProductions(sheetData.productions);
                 setProductions(loadedProds);
               }
               if (sheetData.transactions && sheetData.transactions.length > 0) {
-                loadedTxs = sheetData.transactions;
+                loadedTxs = sanitizeTransactions(sheetData.transactions);
                 setTransactions(loadedTxs);
               }
               if (sheetData.monthlyStockCounts && sheetData.monthlyStockCounts.length > 0) {
@@ -579,8 +705,8 @@ export default function App() {
           if (hasCloudItems) {
             loadedMats = sanitizeMaterials(cloudData.materials || []);
             loadedRecipes = sanitizeRecipes(cloudData.recipes || []);
-            loadedProds = cloudData.productions || [];
-            loadedTxs = cloudData.transactions || [];
+            loadedProds = sanitizeProductions(cloudData.productions || []);
+            loadedTxs = sanitizeTransactions(cloudData.transactions || []);
             loadedCounts = cloudData.stockCountRecords || [];
             setMaterials(loadedMats);
             setRecipes(loadedRecipes);
@@ -619,16 +745,16 @@ export default function App() {
               if (localTxs) {
                 const parsed = JSON.parse(localTxs);
                 if (Array.isArray(parsed) && parsed.length > 0) {
-                  loadedTxs = parsed;
-                  setTransactions(parsed);
+                  loadedTxs = sanitizeTransactions(parsed);
+                  setTransactions(loadedTxs);
                   hasData = true;
                 }
               }
               if (localProds) {
                 const parsed = JSON.parse(localProds);
                 if (Array.isArray(parsed) && parsed.length > 0) {
-                  loadedProds = parsed;
-                  setProductions(parsed);
+                  loadedProds = sanitizeProductions(parsed);
+                  setProductions(loadedProds);
                   hasData = true;
                 }
               }
@@ -718,12 +844,28 @@ export default function App() {
     // 2. Real-time subscription to cloud changes across tabs / devices
     const unsubscribeCloud = subscribeToCloudChanges(
       (data) => {
+        if (!isInitialLoadDoneRef.current) return;
         if (data && data.isInitialized) {
-          if (data.materials) setMaterials(data.materials);
-          if (data.recipes) setRecipes(data.recipes);
-          if (data.productions) setProductions(data.productions);
-          if (data.transactions) setTransactions(data.transactions);
-          if (data.stockCountRecords) setStockCountRecords(data.stockCountRecords);
+          if (data.materials && JSON.stringify(data.materials) !== localStorage.getItem('stock_materials')) {
+            setMaterials(data.materials);
+            localStorage.setItem('stock_materials', JSON.stringify(data.materials));
+          }
+          if (data.recipes && JSON.stringify(data.recipes) !== localStorage.getItem('stock_recipes')) {
+            setRecipes(data.recipes);
+            localStorage.setItem('stock_recipes', JSON.stringify(data.recipes));
+          }
+          if (data.productions && JSON.stringify(data.productions) !== localStorage.getItem('stock_productions')) {
+            setProductions(data.productions);
+            localStorage.setItem('stock_productions', JSON.stringify(data.productions));
+          }
+          if (data.transactions && JSON.stringify(data.transactions) !== localStorage.getItem('stock_transactions')) {
+            setTransactions(data.transactions);
+            localStorage.setItem('stock_transactions', JSON.stringify(data.transactions));
+          }
+          if (data.stockCountRecords && JSON.stringify(data.stockCountRecords) !== localStorage.getItem('stock_count_records')) {
+            setStockCountRecords(data.stockCountRecords);
+            localStorage.setItem('stock_count_records', JSON.stringify(data.stockCountRecords));
+          }
         }
       },
       (settings) => {
@@ -1239,38 +1381,31 @@ export default function App() {
 
   // 4. Save/Edit Transaction
   const handleSaveTransaction = async (tx: StockTransaction) => {
-    let nextTxs: StockTransaction[] = [];
+    const fullTx: StockTransaction = {
+      ...tx,
+      id: tx.id || `tx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    };
+    let nextTxs = [...transactions];
     if (editingTransaction !== null) {
       const editIdx = editingTransaction.index;
-      setTransactions((prev) => {
-        const next = [...prev];
-        next[editIdx] = tx;
-        nextTxs = next;
-        return next;
-      });
-      setEditingTransaction(null);
-      showNotification(`แก้ไขข้อมูล ${tx.Type} (${tx.RM_Code}) เรียบร้อยแล้ว`);
-    } else {
-      setTransactions((prev) => {
-        const next = [tx, ...prev];
-        nextTxs = next;
-        return next;
-      });
-      showNotification(`บันทึก ${tx.Type} สำหรับ ${tx.RM_Code} สำเร็จ`);
-
-      // Legacy single row append if OAuth sheet connected
-      if (spreadsheetId && !webhookUrl) {
-        try {
-          const currentToken = token || (await getAccessToken());
-          if (currentToken) {
-            await appendTransactionToSheet(currentToken, spreadsheetId, tx);
-          }
-        } catch (err) {
-          console.warn('Could not append row to Google Sheets:', err);
-        }
+      const oldTx = editingTransaction.data || transactions[editIdx];
+      const targetIdx = nextTxs.findIndex((t, idx) =>
+        oldTx?.id && t.id ? t.id === oldTx.id : idx === editIdx
+      );
+      if (targetIdx !== -1) {
+        nextTxs[targetIdx] = { ...fullTx, id: oldTx?.id || fullTx.id };
+      } else {
+        nextTxs.unshift(fullTx);
       }
+      setEditingTransaction(null);
+      showNotification(`แก้ไขข้อมูล ${fullTx.Type} (${fullTx.RM_Code}) เรียบร้อยแล้ว`);
+    } else {
+      nextTxs = [fullTx, ...nextTxs];
+      showNotification(`บันทึก ${fullTx.Type} สำหรับ ${fullTx.RM_Code} สำเร็จ`);
     }
 
+    setTransactions(nextTxs);
+    localStorage.setItem('stock_transactions', JSON.stringify(nextTxs));
     triggerAutoSync({ transactions: nextTxs });
   };
 
@@ -1283,8 +1418,11 @@ export default function App() {
   // 5. Save/Edit Daily Production (with optional Auto-Deduct & Auto-Update on Edit)
   const handleSaveProduction = async (prod: DailyProduction, autoDeduct: boolean) => {
     const fullProd = calculateProductionRowTotals(prod);
-    let nextProds: DailyProduction[] = [];
-    let nextTxs = transactions;
+    if (!fullProd.id) {
+      fullProd.id = `prod_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    }
+    let nextProds = [...productions];
+    let nextTxs = [...transactions];
 
     const pCode = (fullProd.Product_Code || '').trim().toUpperCase();
     const productRecipes = recipes.filter(
@@ -1293,21 +1431,24 @@ export default function App() {
 
     if (editingProduction !== null) {
       const editIdx = editingProduction.index;
-      const oldProd = productions[editIdx];
-      const oldCode = (oldProd.Product_Code || '').trim().toUpperCase();
+      const oldProd = editingProduction.data || productions[editIdx];
+      const oldCode = (oldProd?.Product_Code || '').trim().toUpperCase();
 
-      setProductions((prev) => {
-        const next = [...prev];
-        next[editIdx] = fullProd;
-        nextProds = next;
-        return next;
-      });
+      const targetIdx = nextProds.findIndex((p, idx) =>
+        oldProd?.id && p.id ? p.id === oldProd.id : idx === editIdx
+      );
+
+      if (targetIdx !== -1) {
+        nextProds[targetIdx] = { ...fullProd, id: oldProd?.id || fullProd.id };
+      } else {
+        nextProds.unshift(fullProd);
+      }
       setEditingProduction(null);
 
       // If autoDeduct is enabled on edit:
       // Remove previously auto-deducted transactions for this batch and replace with new calculated usage
-      if (autoDeduct) {
-        const filteredTxs = transactions.filter((t) => {
+      if (autoDeduct && oldProd) {
+        const filteredTxs = nextTxs.filter((t) => {
           const isOldAuto =
             t.Date === oldProd.Date &&
             t.Type === 'Actual Usage' &&
@@ -1317,6 +1458,8 @@ export default function App() {
         });
 
         const newAutoTxs: StockTransaction[] = productRecipes.map((r) => ({
+          id: `tx_auto_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          productionId: fullProd.id,
           Date: fullProd.Date,
           Type: 'Actual Usage',
           RM_Code: r.RM_Code,
@@ -1327,6 +1470,7 @@ export default function App() {
 
         nextTxs = [...newAutoTxs, ...filteredTxs];
         setTransactions(nextTxs);
+        localStorage.setItem('stock_transactions', JSON.stringify(nextTxs));
         showNotification(
           `✅ แก้ไขยอดผลิต ${fullProd.Product_Code} (${fullProd.Produced_Qty} ชิ้น) และปรับยอดตัดสต็อกวัตถุดิบ ${newAutoTxs.length} รายการให้อัตโนมัติ!`
         );
@@ -1334,15 +1478,12 @@ export default function App() {
         showNotification(`✅ แก้ไขข้อมูลการผลิต ${fullProd.Product_Code} วันที่ ${fullProd.Date} สำเร็จ`);
       }
     } else {
-      setProductions((prev) => {
-        const next = [fullProd, ...prev];
-        nextProds = next;
-        return next;
-      });
+      nextProds = [fullProd, ...nextProds];
 
-      // If auto-deduct is enabled: generate Actual Usage transactions for all recipe ingredients
       if (autoDeduct) {
         const newAutoTxs: StockTransaction[] = productRecipes.map((r) => ({
+          id: `tx_auto_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          productionId: fullProd.id,
           Date: fullProd.Date,
           Type: 'Actual Usage',
           RM_Code: r.RM_Code,
@@ -1352,11 +1493,9 @@ export default function App() {
         }));
 
         if (newAutoTxs.length > 0) {
-          setTransactions((prev) => {
-            const next = [...newAutoTxs, ...prev];
-            nextTxs = next;
-            return next;
-          });
+          nextTxs = [...newAutoTxs, ...nextTxs];
+          setTransactions(nextTxs);
+          localStorage.setItem('stock_transactions', JSON.stringify(nextTxs));
         }
         showNotification(
           `✅ บันทึกยอดผลิต ${fullProd.Product_Code} (${fullProd.Produced_Qty} ชิ้น) และตัดสต็อกวัตถุดิบ ${newAutoTxs.length} รายการอัตโนมัติ!`
@@ -1364,20 +1503,10 @@ export default function App() {
       } else {
         showNotification(`✅ บันทึกยอดผลิต ${fullProd.Product_Code} (${fullProd.Produced_Qty} ชิ้น) เรียบร้อย`);
       }
-
-      // Legacy single row append if OAuth sheet connected
-      if (spreadsheetId && !webhookUrl) {
-        try {
-          const currentToken = token || (await getAccessToken());
-          if (currentToken) {
-            await appendProductionToSheet(currentToken, spreadsheetId, fullProd);
-          }
-        } catch (err) {
-          console.warn('Could not append production row to Google Sheets:', err);
-        }
-      }
     }
 
+    setProductions(nextProds);
+    localStorage.setItem('stock_productions', JSON.stringify(nextProds));
     triggerAutoSync({ productions: nextProds, transactions: nextTxs });
   };
 
@@ -1399,6 +1528,7 @@ export default function App() {
 
     // Filter out previous auto-deductions for this batch to prevent double counting
     const filteredTxs = transactions.filter((t) => {
+      if (prod.id && t.productionId === prod.id) return false;
       const isOldAuto =
         t.Date === prod.Date &&
         t.Type === 'Actual Usage' &&
@@ -1408,6 +1538,8 @@ export default function App() {
     });
 
     const newAutoTxs: StockTransaction[] = productRecipes.map((r) => ({
+      id: `tx_auto_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      productionId: prod.id,
       Date: prod.Date,
       Type: 'Actual Usage',
       RM_Code: r.RM_Code,
@@ -1543,6 +1675,7 @@ export default function App() {
             productions={productions}
             recipes={recipes}
             materials={materials}
+            transactions={transactions}
             onAddProduction={(p) => handleSaveProduction(p, false)}
             onAutoDeductBatch={handleAutoDeductBatch}
             onOpenNewProdModal={() => {
@@ -1550,7 +1683,9 @@ export default function App() {
               setIsNewProdModalOpen(true);
             }}
             onEditProduction={handleEditProduction}
-            onDeleteProduction={handleDeleteProduction}
+            onDeleteProduction={(target, deleteLinked) =>
+              handleDeleteProduction(target, deleteLinked !== false)
+            }
           />
         )}
 
