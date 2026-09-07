@@ -1,6 +1,13 @@
 import { MasterMaterial, BOMRecipe, DailyProduction, StockTransaction } from '../types/stock';
 
-export const INITIAL_MATERIALS: MasterMaterial[] = [
+// Clean initial data state (empty system ready for real business usage)
+export const INITIAL_MATERIALS: MasterMaterial[] = [];
+export const INITIAL_RECIPES: BOMRecipe[] = [];
+export const INITIAL_DAILY_PRODUCTION: DailyProduction[] = [];
+export const INITIAL_TRANSACTIONS: StockTransaction[] = [];
+
+// Optional sample / demo dataset for users who explicitly choose to test the system
+export const DEMO_MATERIALS: MasterMaterial[] = [
   { RM_Code: 'RM001', RM_Name: 'แป้งสาลีเอนกประสงค์ (Flour)', Unit: 'kg', Opening_Stock: 100, Safety_Stock: 30 },
   { RM_Code: 'RM002', RM_Name: 'น้ำตาลทรายขาว (Sugar)', Unit: 'kg', Opening_Stock: 80, Safety_Stock: 25 },
   { RM_Code: 'RM003', RM_Name: 'เนยสดแท้ (Butter)', Unit: 'kg', Opening_Stock: 50, Safety_Stock: 20 },
@@ -11,7 +18,7 @@ export const INITIAL_MATERIALS: MasterMaterial[] = [
   { RM_Code: 'RM008', RM_Name: 'กล่องเค้กและบรรจุภัณฑ์ (Packaging)', Unit: 'pcs', Opening_Stock: 500, Safety_Stock: 150 },
 ];
 
-export const INITIAL_RECIPES: BOMRecipe[] = [
+export const DEMO_RECIPES: BOMRecipe[] = [
   // Product P001: เค้กช็อกโกแลตหน้านิ่ม (Chocolate Cake) ต่อ 1 ก้อน
   { Product_Code: 'P001', Product_Name: 'เค้กช็อกโกแลตหน้านิ่ม (1 ปอนด์)', RM_Code: 'RM001', Standard_Qty: 0.25 }, // 250g แป้ง
   { Product_Code: 'P001', Product_Name: 'เค้กช็อกโกแลตหน้านิ่ม (1 ปอนด์)', RM_Code: 'RM002', Standard_Qty: 0.20 }, // 200g น้ำตาล
@@ -35,7 +42,7 @@ export const INITIAL_RECIPES: BOMRecipe[] = [
   { Product_Code: 'P003', Product_Name: 'กาแฟลาเต้เย็น (Iced Latte 16oz)', RM_Code: 'RM008', Standard_Qty: 1.00 }, // 1 แก้ว
 ];
 
-export const INITIAL_DAILY_PRODUCTION: DailyProduction[] = [
+export const DEMO_DAILY_PRODUCTION: DailyProduction[] = [
   {
     id: 'prod_001',
     Date: '2026-08-01',
@@ -83,7 +90,7 @@ export const INITIAL_DAILY_PRODUCTION: DailyProduction[] = [
   },
 ];
 
-export const INITIAL_TRANSACTIONS: StockTransaction[] = [
+export const DEMO_TRANSACTIONS: StockTransaction[] = [
   // Receive (รับเข้า)
   { id: 'tx_rec_001', Date: '2026-08-01', Type: 'Receive', RM_Code: 'RM001', Qty: 150, Recorder: 'สมศักดิ์ คลังสินค้า', Note: 'ล็อตรับเข้าต้นเดือน PO#101' },
   { id: 'tx_rec_002', Date: '2026-08-01', Type: 'Receive', RM_Code: 'RM002', Qty: 100, Recorder: 'สมศักดิ์ คลังสินค้า', Note: 'ล็อตรับเข้าต้นเดือน PO#101' },
