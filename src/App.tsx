@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { User } from 'firebase/auth';
 import { Shield, Lock } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -10,6 +10,7 @@ import {
   DailyProduction,
   StockTransaction,
   TransactionType,
+  MonthlyStockCountRecord,
 } from './types/stock';
 import {
   INITIAL_MATERIALS,
@@ -29,25 +30,33 @@ import {
   initAuth,
   googleSignIn,
   logout,
-  getAccessToken,
 } from './services/auth';
 import {
-  createStockSpreadsheet,
-  initializeSheetDataAndFormulas,
-  fetchAllSheetData,
-  appendTransactionToSheet,
-  appendProductionToSheet,
-  syncViaWebhook,
-  fetchDataFromGoogleSheet,
-} from './services/googleSheets';
+  testSupabaseConnection,
+  fetchMasterMaterials,
+  upsertMasterMaterial,
+  deleteMasterMaterial,
+  updateMaterialOpeningStock,
+  fetchBOMRecipes,
+  upsertBOMRecipe,
+  deleteBOMRecipe,
+  fetchDailyProductions,
+  saveDailyProduction,
+  deleteDailyProduction,
+  fetchStockTransactions,
+  saveStockTransaction,
+  deleteStockTransaction,
+  deleteTransactionsForProduction,
+  fetchMonthlyStockCounts,
+  fetchMonthlyStockCountRecords,
+  closeMonthlyStockReconciliation,
+  seedInitialDataToSupabase,
+  clearSupabaseTable,
+} from './services/supabase';
 import {
-  testFirestoreConnection,
-  loadCloudData,
-  loadCloudSettings,
-  saveCloudDataDebounced,
-  saveCloudSettings,
-  subscribeToCloudChanges,
-} from './services/firestore';
+  getLineNotifyToken,
+  sendLowStockAlertNotification,
+} from './services/lineNotify';
 
 // Components
 import { Navbar } from './components/Navbar';
@@ -59,21 +68,15 @@ import { StockTransactionsTab } from './components/StockTransactionsTab';
 import { MasterMaterialsTab } from './components/MasterMaterialsTab';
 import { BOMRecipeTab } from './components/BOMRecipeTab';
 import { FormulaGuideModal } from './components/FormulaGuideModal';
-import { GoogleSheetsSyncModal } from './components/GoogleSheetsSyncModal';
+import { SupabaseSyncModal } from './components/SupabaseSyncModal';
+import { LineNotifyModal } from './components/LineNotifyModal';
 import { NewTransactionModal } from './components/NewTransactionModal';
 import { NewProductionModal } from './components/NewProductionModal';
 import { MaterialDetailModal } from './components/MaterialDetailModal';
 import { OpeningStockModal } from './components/OpeningStockModal';
 import { PhysicalStockCountTab } from './components/PhysicalStockCountTab';
 import { ClearDataModal } from './components/ClearDataModal';
-import { PopupBlockedModal } from './components/PopupBlockedModal';
 import { AdminAuthModal } from './components/AdminAuthModal';
-import { MonthlyStockCountRecord } from './types/stock';
-import {
-  DEFAULT_WEBHOOK_URL,
-  DEFAULT_SPREADSHEET_URL,
-  getEffectiveWebhookUrl,
-} from './config/googleSheetsConfig';
 
 export default function App() {
   const [userRole, setUserRole] = useState<UserRole>('staff');
@@ -89,7 +92,7 @@ export default function App() {
     return localStorage.getItem('stock_admin_pin') || '8888';
   });
 
-  // Core Data State (Saved to Cloud Firestore & localStorage)
+  // Core Data State (Saved to Supabase PostgreSQL & localStorage fallback)
   const [materials, setMaterials] = useState<MasterMaterial[]>(() => {
     const saved = localStorage.getItem('stock_materials');
     if (saved !== null) {
@@ -102,7 +105,7 @@ export default function App() {
         return [];
       }
     }
-    return [];
+    return INITIAL_MATERIALS;
   });
 
   const [recipes, setRecipes] = useState<BOMRecipe[]>(() => {
@@ -117,7 +120,7 @@ export default function App() {
         return [];
       }
     }
-    return [];
+    return INITIAL_RECIPES;
   });
 
   const [productions, setProductions] = useState<DailyProduction[]>(() => {
@@ -132,7 +135,7 @@ export default function App() {
         return [];
       }
     }
-    return [];
+    return INITIAL_DAILY_PRODUCTION;
   });
 
   const [transactions, setTransactions] = useState<StockTransaction[]>(() => {
@@ -147,7 +150,7 @@ export default function App() {
         return [];
       }
     }
-    return [];
+    return INITIAL_TRANSACTIONS;
   });
 
   const [stockCountRecords, setStockCountRecords] = useState<MonthlyStockCountRecord[]>(() => {
@@ -162,110 +165,80 @@ export default function App() {
     return [];
   });
 
-  // Auth & Google Sheets State
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [spreadsheetId, setSpreadsheetId] = useState<string | null>(() => {
-    return localStorage.getItem('stock_spreadsheet_id') || null;
-  });
-  const [spreadsheetUrl, setSpreadsheetUrl] = useState<string | null>(() => {
-    return localStorage.getItem('stock_spreadsheet_url') || (DEFAULT_SPREADSHEET_URL ? DEFAULT_SPREADSHEET_URL : null);
-  });
-  const [webhookUrl, setWebhookUrl] = useState<string | null>(() => {
-    return getEffectiveWebhookUrl();
-  });
-  const [autoSyncEnabled, setAutoSyncEnabled] = useState<boolean>(() => {
-    return localStorage.getItem('stock_auto_sync') !== 'false';
-  });
-  const [lastSyncTime, setLastSyncTime] = useState<string | null>(() => {
-    return localStorage.getItem('stock_last_sync') || null;
-  });
+  // Supabase Database Connection & Status
+  const [isSupabaseConnected, setIsSupabaseConnected] = useState<boolean>(false);
+  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
+  const [isLineNotifyModalOpen, setIsLineNotifyModalOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string>(() => {
+    return localStorage.getItem('stock_last_sync') || '';
+  });
   const [notification, setNotification] = useState<string | null>(null);
+  const isInitialLoadDoneRef = useRef(false);
 
-  // Debounce ref for live Google Sheets background syncing
-  const autoSyncTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Auth State
+  const [user, setUser] = useState<User | null>(null);
 
-  // Background Cloud Firestore and Google Sheets Auto-Sync Trigger
-  const triggerAutoSync = (overrides?: {
-    materials?: MasterMaterial[];
-    recipes?: BOMRecipe[];
-    productions?: DailyProduction[];
-    transactions?: StockTransaction[];
-    stockCountRecords?: MonthlyStockCountRecord[];
-  }) => {
-    const curMats = overrides?.materials || materials;
-    const curRecipes = overrides?.recipes || recipes;
-    const curProds = overrides?.productions || productions;
-    const curTxs = overrides?.transactions || transactions;
-    const curCounts = overrides?.stockCountRecords || stockCountRecords;
+  // Load initial data from Supabase (PostgreSQL)
+  const loadFromSupabase = async (notify: boolean = false) => {
+    setIsSyncing(true);
+    try {
+      const connRes = await testSupabaseConnection();
+      setIsSupabaseConnected(connRes.success);
 
-    // 1. Always persist to Cloud Firestore database
-    saveCloudDataDebounced({
-      materials: curMats,
-      recipes: curRecipes,
-      productions: curProds,
-      transactions: curTxs,
-      stockCountRecords: curCounts,
-      isInitialized: true,
-    });
+      if (connRes.success) {
+        const [mats, recs, prods, txs, counts] = await Promise.all([
+          fetchMasterMaterials(),
+          fetchBOMRecipes(),
+          fetchDailyProductions(),
+          fetchStockTransactions(),
+          fetchMonthlyStockCountRecords(),
+        ]);
 
-    // 2. Real-time automatic sync to Google Sheets
-    const currentWebhook = getEffectiveWebhookUrl() || webhookUrl || localStorage.getItem('stock_webhook_url');
-    const currentSheetId = spreadsheetId || localStorage.getItem('stock_spreadsheet_id');
-
-    if (!currentWebhook && !currentSheetId) return;
-
-    if (autoSyncTimerRef.current) {
-      clearTimeout(autoSyncTimerRef.current);
-    }
-
-    autoSyncTimerRef.current = setTimeout(async () => {
-      try {
-        setIsSyncing(true);
-        if (currentWebhook) {
-          await syncViaWebhook(
-            currentWebhook,
-            {
-              materials: curMats,
-              recipes: curRecipes,
-              productions: curProds,
-              transactions: curTxs,
-              monthlyStockCounts: curCounts,
-            },
-            'syncAll'
-          );
-          const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
-          setLastSyncTime(nowStr);
-          localStorage.setItem('stock_last_sync', nowStr);
-          saveCloudSettings({ lastSyncTime: nowStr });
-        } else if (currentSheetId) {
-          const currentToken = token || (await getAccessToken());
-          if (currentToken) {
-            await initializeSheetDataAndFormulas(
-              currentToken,
-              currentSheetId,
-              curMats,
-              curRecipes,
-              curProds,
-              curTxs
-            );
-            const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
-            setLastSyncTime(nowStr);
-            localStorage.setItem('stock_last_sync', nowStr);
-            saveCloudSettings({ lastSyncTime: nowStr });
+        if (mats.length > 0 || recs.length > 0 || prods.length > 0 || txs.length > 0) {
+          setMaterials(mats);
+          setRecipes(recs);
+          setProductions(prods);
+          setTransactions(txs);
+          setStockCountRecords(counts);
+          localStorage.setItem('stock_materials', JSON.stringify(mats));
+          localStorage.setItem('stock_recipes', JSON.stringify(recs));
+          localStorage.setItem('stock_productions', JSON.stringify(prods));
+          localStorage.setItem('stock_transactions', JSON.stringify(txs));
+          localStorage.setItem('stock_count_records', JSON.stringify(counts));
+          if (notify) {
+            showNotification('🟢 โหลดข้อมูลล่าสุดจากฐานข้อมูลกลางสำเร็จ');
+          }
+        } else {
+          // If database is brand new and tables are empty, seed initial data
+          await seedInitialDataToSupabase(INITIAL_MATERIALS, INITIAL_RECIPES, INITIAL_DAILY_PRODUCTION, INITIAL_TRANSACTIONS);
+          setMaterials(INITIAL_MATERIALS);
+          setRecipes(INITIAL_RECIPES);
+          setProductions(INITIAL_DAILY_PRODUCTION);
+          setTransactions(INITIAL_TRANSACTIONS);
+          if (notify) {
+            showNotification('✨ เริ่มต้นตารางและบันทึกข้อมูลตั้งต้นลงฐานข้อมูลเรียบร้อย');
           }
         }
-      } catch (err) {
-        console.warn('Auto-sync background update notice:', err);
-      } finally {
-        setIsSyncing(false);
+      } else {
+        if (notify) {
+          showNotification('⚠️ ยังไม่ได้เชื่อมต่อฐานข้อมูลกลาง ใช้ข้อมูลแคชในเครื่อง');
+        }
       }
-    }, 400);
+    } catch (err: any) {
+      console.warn('Supabase initial fetch note:', err);
+      setIsSupabaseConnected(false);
+    } finally {
+      setIsSyncing(false);
+      isInitialLoadDoneRef.current = true;
+    }
   };
 
+  useEffect(() => {
+    loadFromSupabase(true);
+  }, []);
+
   // Modal Visibility State
-  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [isFormulaModalOpen, setIsFormulaModalOpen] = useState(false);
   const [isNewTxModalOpen, setIsNewTxModalOpen] = useState(false);
   const [initialTxType, setInitialTxType] = useState<TransactionType>('Receive');
@@ -280,11 +253,29 @@ export default function App() {
   } | null>(null);
   const [isOpeningStockModalOpen, setIsOpeningStockModalOpen] = useState(false);
   const [isClearDataModalOpen, setIsClearDataModalOpen] = useState(false);
-  const [isPopupBlockedModalOpen, setIsPopupBlockedModalOpen] = useState(false);
   const [selectedMaterialDetail, setSelectedMaterialDetail] = useState<string | null>(null);
 
+  // Centralized local state persistence & status updater
+  const triggerAutoSync = (patch?: {
+    materials?: MasterMaterial[];
+    recipes?: BOMRecipe[];
+    productions?: DailyProduction[];
+    transactions?: StockTransaction[];
+    stockCountRecords?: MonthlyStockCountRecord[];
+  }) => {
+    if (patch?.materials) localStorage.setItem('stock_materials', JSON.stringify(patch.materials));
+    if (patch?.recipes) localStorage.setItem('stock_recipes', JSON.stringify(patch.recipes));
+    if (patch?.productions) localStorage.setItem('stock_productions', JSON.stringify(patch.productions));
+    if (patch?.transactions) localStorage.setItem('stock_transactions', JSON.stringify(patch.transactions));
+    if (patch?.stockCountRecords) localStorage.setItem('stock_count_records', JSON.stringify(patch.stockCountRecords));
+
+    const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+    setLastSyncTime(nowStr);
+    localStorage.setItem('stock_last_sync', nowStr);
+  };
+
   // Stock count handler (physical count roll-over)
-  const handleSaveStockCount = (record: MonthlyStockCountRecord, applyAsOpeningStock: boolean) => {
+  const handleSaveStockCount = async (record: MonthlyStockCountRecord, applyAsOpeningStock: boolean) => {
     let nextStockCounts: MonthlyStockCountRecord[] = [];
     setStockCountRecords((prev) => {
       const filtered = prev.filter((r) => r.id !== record.id && r.Month !== record.Month);
@@ -314,6 +305,18 @@ export default function App() {
     }
 
     triggerAutoSync({ stockCountRecords: nextStockCounts, materials: nextMats });
+
+    // Save to Supabase (PostgreSQL)
+    try {
+      await closeMonthlyStockReconciliation({
+        countDate: record.Count_Date || `${record.Month}-01`,
+        recorder: record.Counted_By || 'ผู้ตรวจนับ',
+        note: record.Note,
+        items: record.Items,
+      });
+    } catch (e: any) {
+      console.warn('Supabase stock count save notice:', e);
+    }
   };
 
   // Clear data handler
@@ -334,21 +337,25 @@ export default function App() {
       nextTxs = [];
       setTransactions([]);
       localStorage.setItem('stock_transactions', JSON.stringify([]));
+      clearSupabaseTable('stock_transactions').catch(console.warn);
     }
     if (options.clearProductions) {
       nextProds = [];
       setProductions([]);
       localStorage.setItem('stock_productions', JSON.stringify([]));
+      clearSupabaseTable('daily_production').catch(console.warn);
     }
     if (options.clearMaterials) {
       nextMats = [];
       setMaterials([]);
       localStorage.setItem('stock_materials', JSON.stringify([]));
+      clearSupabaseTable('master_materials').catch(console.warn);
     }
     if (options.clearRecipes) {
       nextRecipes = [];
       setRecipes([]);
       localStorage.setItem('stock_recipes', JSON.stringify([]));
+      clearSupabaseTable('bom_recipe').catch(console.warn);
     }
     showNotification('🗑️ เคลียร์ข้อมูลที่เลือกเรียบร้อยแล้ว พร้อมกรอกข้อมูลจริง');
     triggerAutoSync({
@@ -377,6 +384,7 @@ export default function App() {
       productions: INITIAL_DAILY_PRODUCTION,
       transactions: INITIAL_TRANSACTIONS,
     });
+    seedInitialDataToSupabase(INITIAL_MATERIALS, INITIAL_RECIPES, INITIAL_DAILY_PRODUCTION, INITIAL_TRANSACTIONS).catch(console.warn);
   };
 
   // Import Excel / Sheets Data
@@ -420,6 +428,7 @@ export default function App() {
       productions: nextProds,
       transactions: nextTxs,
     });
+    seedInitialDataToSupabase(nextMats, nextRecipes, nextProds, nextTxs).catch(console.warn);
   };
 
   // Single item deletion handlers
@@ -433,6 +442,7 @@ export default function App() {
     localStorage.setItem('stock_recipes', JSON.stringify(nextRecipes));
     showNotification(`🗑️ ลบวัตถุดิบ ${code} เรียบร้อยแล้ว`);
     triggerAutoSync({ materials: nextMats, recipes: nextRecipes });
+    deleteMasterMaterial(code).catch(console.warn);
   };
 
   const handleDeleteRecipeItem = (productCode: string, rmCode: string) => {
@@ -445,6 +455,7 @@ export default function App() {
     localStorage.setItem('stock_recipes', JSON.stringify(nextRecipes));
     showNotification(`🗑️ ลบส่วนผสม ${rCode} ออกจากสูตร ${pCode} เรียบร้อยแล้ว`);
     triggerAutoSync({ recipes: nextRecipes });
+    deleteBOMRecipe(pCode, rCode).catch(console.warn);
   };
 
   const handleDeleteProduction = (
@@ -513,6 +524,7 @@ export default function App() {
         // 1. Direct match by productionId
         if (prodId && t.productionId === prodId) {
           removedTxCount++;
+          if (t.id) deleteStockTransaction(t.id).catch(console.warn);
           return false;
         }
 
@@ -526,11 +538,17 @@ export default function App() {
 
         if (isDateMatch && isUsage && (isAutoDeduct || (isRmMatch && isAutoDeduct))) {
           removedTxCount++;
+          if (t.id) deleteStockTransaction(t.id).catch(console.warn);
           return false;
         }
 
         return true;
       });
+    }
+
+    // Delete production row in Supabase
+    if (targetProd?.id) {
+      deleteDailyProduction(targetProd.id).catch(console.warn);
     }
 
     // Update state and persistence immediately
@@ -550,12 +568,17 @@ export default function App() {
 
   const handleDeleteTransaction = (target: number | string | StockTransaction) => {
     let nextTxs: StockTransaction[];
+    let targetIdToDelete: string | null = null;
+
     if (typeof target === 'number') {
+      targetIdToDelete = transactions[target]?.id || null;
       nextTxs = transactions.filter((_, idx) => idx !== target);
     } else if (typeof target === 'string') {
+      targetIdToDelete = target;
       nextTxs = transactions.filter((t) => t.id !== target);
     } else if (target) {
       if (target.id) {
+        targetIdToDelete = target.id;
         nextTxs = transactions.filter((t) => t.id !== target.id);
       } else {
         const targetIdx = transactions.findIndex(
@@ -566,6 +589,7 @@ export default function App() {
             Number(t.Qty) === Number(target.Qty)
         );
         if (targetIdx !== -1) {
+          targetIdToDelete = transactions[targetIdx]?.id || null;
           nextTxs = transactions.filter((_, idx) => idx !== targetIdx);
         } else {
           nextTxs = transactions.filter((t) => t !== target);
@@ -575,341 +599,38 @@ export default function App() {
       nextTxs = [...transactions];
     }
 
+    if (targetIdToDelete) {
+      deleteStockTransaction(targetIdToDelete).catch(console.warn);
+    }
+
     setTransactions(nextTxs);
     localStorage.setItem('stock_transactions', JSON.stringify(nextTxs));
     showNotification('🗑️ ลบรายการประวัติสต๊อกเรียบร้อยแล้ว');
     triggerAutoSync({ transactions: nextTxs });
   };
 
-  const handleSaveOpeningStocks = (updated: { RM_Code: string; Opening_Stock: number }[]) => {
+  const handleSaveOpeningStocks = async (updated: { RM_Code: string; Opening_Stock: number }[]) => {
     const nextMats = materials.map((m) => {
       const match = updated.find((u) => u.RM_Code === m.RM_Code);
       return match ? { ...m, Opening_Stock: match.Opening_Stock } : m;
     });
     setMaterials(nextMats);
+    localStorage.setItem('stock_materials', JSON.stringify(nextMats));
     showNotification('✅ บันทึกยอดยกมาต้นเดือนเรียบร้อยแล้ว');
-    triggerAutoSync({ materials: nextMats });
+    try {
+      await Promise.all(
+        updated.map((u) => updateMaterialOpeningStock(u.RM_Code, u.Opening_Stock))
+      );
+    } catch (e) {
+      console.warn('Supabase opening stock update notice:', e);
+    }
   };
-
-  // Track initial load completion to prevent premature blank overwriting
-  const isInitialLoadDoneRef = useRef(false);
-
-  // Save to localStorage & Cloud & auto-sync to Google Sheets whenever core data changes (after initial startup load is complete)
-  useEffect(() => {
-    if (!isInitialLoadDoneRef.current) return;
-
-    localStorage.setItem('stock_materials', JSON.stringify(materials));
-    localStorage.setItem('stock_recipes', JSON.stringify(recipes));
-    localStorage.setItem('stock_productions', JSON.stringify(productions));
-    localStorage.setItem('stock_transactions', JSON.stringify(transactions));
-    localStorage.setItem('stock_count_records', JSON.stringify(stockCountRecords));
-
-    saveCloudDataDebounced(
-      {
-        materials,
-        recipes,
-        productions,
-        transactions,
-        stockCountRecords,
-        isInitialized: true,
-      },
-      350
-    );
-
-    // Continuous automatic background sync to Google Sheets
-    triggerAutoSync({
-      materials,
-      recipes,
-      productions,
-      transactions,
-      stockCountRecords,
-    });
-  }, [materials, recipes, productions, transactions, stockCountRecords]);
-
-  // Load persistent data & settings from Google Sheet & Cloud Database on startup
-  useEffect(() => {
-    testFirestoreConnection();
-
-    let isSubscribed = true;
-
-    // 1. Initial fetch: Always pull latest real-time single-source-of-truth from Google Sheets first!
-    (async () => {
-      try {
-        const [cloudData, cloudSettings] = await Promise.all([
-          loadCloudData(),
-          loadCloudSettings(),
-        ]);
-
-        if (!isSubscribed) return;
-
-        let loadedMats = materials;
-        let loadedRecipes = recipes;
-        let loadedProds = productions;
-        let loadedTxs = transactions;
-        let loadedCounts = stockCountRecords;
-        let hasData = false;
-
-        // Resolve webhook configuration
-        const targetWebhook =
-          (DEFAULT_WEBHOOK_URL && DEFAULT_WEBHOOK_URL.trim().startsWith('http') ? DEFAULT_WEBHOOK_URL.trim() : null) ||
-          cloudSettings?.webhookUrl ||
-          localStorage.getItem('stock_webhook_url');
-
-        // Always check and load live data from Google Sheets first
-        if (targetWebhook) {
-          try {
-            console.log('🔄 Live auto-fetching single source of truth from Google Sheet on startup...');
-            const sheetData = await fetchDataFromGoogleSheet(targetWebhook);
-            if (
-              sheetData &&
-              ((sheetData.materials && sheetData.materials.length > 0) ||
-                (sheetData.productions && sheetData.productions.length > 0) ||
-                (sheetData.transactions && sheetData.transactions.length > 0))
-            ) {
-              if (sheetData.materials && sheetData.materials.length > 0) {
-                loadedMats = sanitizeMaterials(sheetData.materials);
-                setMaterials(loadedMats);
-              }
-              if (sheetData.recipes && sheetData.recipes.length > 0) {
-                loadedRecipes = sanitizeRecipes(sheetData.recipes);
-                setRecipes(loadedRecipes);
-              }
-              if (sheetData.productions && sheetData.productions.length > 0) {
-                loadedProds = sanitizeProductions(sheetData.productions);
-                setProductions(loadedProds);
-              }
-              if (sheetData.transactions && sheetData.transactions.length > 0) {
-                loadedTxs = sanitizeTransactions(sheetData.transactions);
-                setTransactions(loadedTxs);
-              }
-              if (sheetData.monthlyStockCounts && sheetData.monthlyStockCounts.length > 0) {
-                loadedCounts = sheetData.monthlyStockCounts;
-                setStockCountRecords(loadedCounts);
-              }
-              hasData = true;
-              showNotification('🟢 โหลดข้อมูลเรียลไทม์จาก Google Sheets สำเร็จ');
-            }
-          } catch (e) {
-            console.warn('Auto-fetch from Google Sheet notice on startup:', e);
-          }
-        }
-
-        // If Google Sheets had no data yet, load from Cloud Firestore
-        if (!hasData && cloudData && cloudData.isInitialized) {
-          const hasCloudItems =
-            (cloudData.materials && cloudData.materials.length > 0) ||
-            (cloudData.productions && cloudData.productions.length > 0) ||
-            (cloudData.transactions && cloudData.transactions.length > 0) ||
-            (cloudData.recipes && cloudData.recipes.length > 0);
-
-          if (hasCloudItems) {
-            loadedMats = sanitizeMaterials(cloudData.materials || []);
-            loadedRecipes = sanitizeRecipes(cloudData.recipes || []);
-            loadedProds = sanitizeProductions(cloudData.productions || []);
-            loadedTxs = sanitizeTransactions(cloudData.transactions || []);
-            loadedCounts = cloudData.stockCountRecords || [];
-            setMaterials(loadedMats);
-            setRecipes(loadedRecipes);
-            setProductions(loadedProds);
-            setTransactions(loadedTxs);
-            setStockCountRecords(loadedCounts);
-            hasData = true;
-          }
-        }
-
-        // If still empty, check if localStorage has unsynced data
-        if (!hasData) {
-          const localMats = localStorage.getItem('stock_materials');
-          const localTxs = localStorage.getItem('stock_transactions');
-          const localProds = localStorage.getItem('stock_productions');
-          const localRecipes = localStorage.getItem('stock_recipes');
-          const localCounts = localStorage.getItem('stock_count_records');
-
-          if (localMats || localTxs || localProds) {
-            try {
-              if (localMats) {
-                const parsed = JSON.parse(localMats);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                  loadedMats = sanitizeMaterials(parsed);
-                  setMaterials(loadedMats);
-                  hasData = true;
-                }
-              }
-              if (localRecipes) {
-                const parsed = JSON.parse(localRecipes);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                  loadedRecipes = sanitizeRecipes(parsed);
-                  setRecipes(loadedRecipes);
-                }
-              }
-              if (localTxs) {
-                const parsed = JSON.parse(localTxs);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                  loadedTxs = sanitizeTransactions(parsed);
-                  setTransactions(loadedTxs);
-                  hasData = true;
-                }
-              }
-              if (localProds) {
-                const parsed = JSON.parse(localProds);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                  loadedProds = sanitizeProductions(parsed);
-                  setProductions(loadedProds);
-                  hasData = true;
-                }
-              }
-              if (localCounts) {
-                const parsed = JSON.parse(localCounts);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                  loadedCounts = parsed;
-                  setStockCountRecords(parsed);
-                }
-              }
-            } catch (e) {
-              console.warn('LocalStorage parse notice:', e);
-            }
-          }
-        }
-
-        // Save active state to Cloud Database
-        saveCloudDataDebounced(
-          {
-            materials: loadedMats,
-            recipes: loadedRecipes,
-            productions: loadedProds,
-            transactions: loadedTxs,
-            stockCountRecords: loadedCounts,
-            isInitialized: true,
-          },
-          100
-        );
-
-        localStorage.setItem('stock_data_initialized', 'true');
-        isInitialLoadDoneRef.current = true;
-
-        if (cloudSettings) {
-          if (DEFAULT_WEBHOOK_URL && DEFAULT_WEBHOOK_URL.trim().startsWith('http')) {
-            setWebhookUrl(DEFAULT_WEBHOOK_URL.trim());
-            localStorage.setItem('stock_webhook_url', DEFAULT_WEBHOOK_URL.trim());
-          } else if (cloudSettings.webhookUrl !== undefined) {
-            setWebhookUrl(cloudSettings.webhookUrl);
-            if (cloudSettings.webhookUrl) {
-              localStorage.setItem('stock_webhook_url', cloudSettings.webhookUrl);
-            } else {
-              localStorage.removeItem('stock_webhook_url');
-            }
-          }
-
-          if (cloudSettings.spreadsheetId !== undefined) {
-            setSpreadsheetId(cloudSettings.spreadsheetId);
-            if (cloudSettings.spreadsheetId) {
-              localStorage.setItem('stock_spreadsheet_id', cloudSettings.spreadsheetId);
-            } else {
-              localStorage.removeItem('stock_spreadsheet_id');
-            }
-          }
-
-          if (DEFAULT_SPREADSHEET_URL && DEFAULT_SPREADSHEET_URL.trim().startsWith('http')) {
-            setSpreadsheetUrl(DEFAULT_SPREADSHEET_URL.trim());
-            localStorage.setItem('stock_spreadsheet_url', DEFAULT_SPREADSHEET_URL.trim());
-          } else if (cloudSettings.spreadsheetUrl !== undefined) {
-            setSpreadsheetUrl(cloudSettings.spreadsheetUrl);
-            if (cloudSettings.spreadsheetUrl) {
-              localStorage.setItem('stock_spreadsheet_url', cloudSettings.spreadsheetUrl);
-            } else {
-              localStorage.removeItem('stock_spreadsheet_url');
-            }
-          }
-          if (cloudSettings.autoSyncEnabled !== undefined) {
-            setAutoSyncEnabled(cloudSettings.autoSyncEnabled);
-            localStorage.setItem('stock_auto_sync', cloudSettings.autoSyncEnabled ? 'true' : 'false');
-          }
-          if (cloudSettings.lastSyncTime !== undefined) {
-            setLastSyncTime(cloudSettings.lastSyncTime);
-            if (cloudSettings.lastSyncTime) {
-              localStorage.setItem('stock_last_sync', cloudSettings.lastSyncTime);
-            }
-          }
-          if (cloudSettings.adminPin) {
-            setAdminPin(cloudSettings.adminPin);
-            localStorage.setItem('stock_admin_pin', cloudSettings.adminPin);
-          }
-        }
-      } catch (err) {
-        console.warn('Initial cloud state fetch notice:', err);
-        isInitialLoadDoneRef.current = true;
-      }
-    })();
-
-    // 2. Real-time subscription to cloud changes across tabs / devices
-    const unsubscribeCloud = subscribeToCloudChanges(
-      (data) => {
-        if (!isInitialLoadDoneRef.current) return;
-        if (data && data.isInitialized) {
-          if (data.materials && JSON.stringify(data.materials) !== localStorage.getItem('stock_materials')) {
-            setMaterials(data.materials);
-            localStorage.setItem('stock_materials', JSON.stringify(data.materials));
-          }
-          if (data.recipes && JSON.stringify(data.recipes) !== localStorage.getItem('stock_recipes')) {
-            setRecipes(data.recipes);
-            localStorage.setItem('stock_recipes', JSON.stringify(data.recipes));
-          }
-          if (data.productions && JSON.stringify(data.productions) !== localStorage.getItem('stock_productions')) {
-            setProductions(data.productions);
-            localStorage.setItem('stock_productions', JSON.stringify(data.productions));
-          }
-          if (data.transactions && JSON.stringify(data.transactions) !== localStorage.getItem('stock_transactions')) {
-            setTransactions(data.transactions);
-            localStorage.setItem('stock_transactions', JSON.stringify(data.transactions));
-          }
-          if (data.stockCountRecords && JSON.stringify(data.stockCountRecords) !== localStorage.getItem('stock_count_records')) {
-            setStockCountRecords(data.stockCountRecords);
-            localStorage.setItem('stock_count_records', JSON.stringify(data.stockCountRecords));
-          }
-        }
-      },
-      (settings) => {
-        if (settings) {
-          if (settings.webhookUrl !== undefined) {
-            setWebhookUrl(settings.webhookUrl);
-            if (settings.webhookUrl) localStorage.setItem('stock_webhook_url', settings.webhookUrl);
-          }
-          if (settings.spreadsheetId !== undefined) {
-            setSpreadsheetId(settings.spreadsheetId);
-            if (settings.spreadsheetId) localStorage.setItem('stock_spreadsheet_id', settings.spreadsheetId);
-          }
-          if (settings.spreadsheetUrl !== undefined) {
-            setSpreadsheetUrl(settings.spreadsheetUrl);
-            if (settings.spreadsheetUrl) localStorage.setItem('stock_spreadsheet_url', settings.spreadsheetUrl);
-          }
-          if (settings.autoSyncEnabled !== undefined) {
-            setAutoSyncEnabled(settings.autoSyncEnabled);
-            localStorage.setItem('stock_auto_sync', settings.autoSyncEnabled ? 'true' : 'false');
-          }
-          if (settings.lastSyncTime !== undefined) {
-            setLastSyncTime(settings.lastSyncTime);
-            if (settings.lastSyncTime) localStorage.setItem('stock_last_sync', settings.lastSyncTime);
-          }
-          if (settings.adminPin) {
-            setAdminPin(settings.adminPin);
-            localStorage.setItem('stock_admin_pin', settings.adminPin);
-          }
-        }
-      }
-    );
-
-    return () => {
-      isSubscribed = false;
-      unsubscribeCloud();
-    };
-  }, []);
 
   // Auth State Listener
   useEffect(() => {
     const unsubscribe = initAuth(
-      (currentUser, accessToken) => {
+      (currentUser) => {
         setUser(currentUser);
-        setToken(accessToken);
         if (currentUser) {
           setIsAdminAuthenticated(true);
           sessionStorage.setItem('stock_admin_auth', 'true');
@@ -917,7 +638,6 @@ export default function App() {
       },
       () => {
         setUser(null);
-        setToken(null);
       }
     );
     return () => unsubscribe();
@@ -958,7 +678,6 @@ export default function App() {
       const res = await googleSignIn();
       if (res) {
         setUser(res.user);
-        setToken(res.accessToken);
         setIsAdminAuthenticated(true);
         sessionStorage.setItem('stock_admin_auth', 'true');
         showNotification(`ยินดีต้อนรับคุณ ${res.user.displayName || res.user.email} (สิทธิ์ Admin)`);
@@ -969,7 +688,7 @@ export default function App() {
         err?.message === 'POPUP_BLOCKED' ||
         err?.message?.includes('popup-blocked')
       ) {
-        setIsPopupBlockedModalOpen(true);
+        showNotification('⚠️ เบราว์เซอร์บล็อคหน้าต่างป็อปอัป สามารถใช้รหัส PIN 8888 เพื่อเข้าใช้งานได้ทันที');
       } else if (err?.code !== 'auth/popup-closed-by-user') {
         showNotification(`⚠️ เข้าสู่ระบบไม่สำเร็จ: ${err.message || 'กรุณาลองใหม่อีกครั้ง'}`);
       }
@@ -980,7 +699,6 @@ export default function App() {
   const handleSignOut = async () => {
     await logout();
     setUser(null);
-    setToken(null);
     setIsAdminAuthenticated(false);
     sessionStorage.removeItem('stock_admin_auth');
     setUserRole('staff');
@@ -990,337 +708,61 @@ export default function App() {
     showNotification('ออกจากระบบเรียบร้อย');
   };
 
-  // Webhook Configuration Handler
-  const handleSaveWebhookUrl = async (url: string) => {
-    setIsSyncing(true);
-    try {
-      await syncViaWebhook(url, {
-        materials,
-        recipes,
-        productions,
-        transactions,
-        monthlyStockCounts: stockCountRecords,
-      }, 'syncAll');
-
-      setWebhookUrl(url);
-      localStorage.setItem('stock_webhook_url', url);
-      const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
-      setLastSyncTime(nowStr);
-      localStorage.setItem('stock_last_sync', nowStr);
-      
-      // Persist Webhook & Sync settings to Cloud Database permanently
-      await saveCloudSettings({
-        webhookUrl: url,
-        autoSyncEnabled: true,
-        lastSyncTime: nowStr,
-      });
-
-      confetti({
-        particleCount: 70,
-        spread: 50,
-        origin: { y: 0.6 },
-      });
-      showNotification('⚡ เชื่อมต่อ Google Apps Script Webhook และบันทึกบนคลาวด์ถาวรแล้ว!');
-    } catch (err: any) {
-      console.error(err);
-      throw err;
-    } finally {
-      setIsSyncing(false);
-    }
+  // Supabase Manual Sync Handler
+  const handleSyncSupabase = async () => {
+    await loadFromSupabase(true);
   };
 
-  const handleToggleAutoSync = (enabled: boolean) => {
-    setAutoSyncEnabled(enabled);
-    localStorage.setItem('stock_auto_sync', enabled ? 'true' : 'false');
-    saveCloudSettings({ autoSyncEnabled: enabled });
-    showNotification(enabled ? '🟢 เปิดการซิงค์อัตโนมัติเข้า Google Sheet แล้ว' : '⏸️ ปิดการซิงค์อัตโนมัติชั่วคราว');
-    if (enabled) {
-      triggerAutoSync();
-    }
-  };
-
-  // Create New Spreadsheet in user's Drive
-  const handleCreateNewSheet = async () => {
-    let currentToken = token || (await getAccessToken());
-    if (!currentToken) {
-      const res = await googleSignIn();
-      if (!res) throw new Error('กรุณาเข้าสู่ระบบ Google เพื่อสร้าง Sheet');
-      currentToken = res.accessToken;
-      setUser(res.user);
-      setToken(res.accessToken);
-    }
-
+  // Push current local data into Supabase
+  const handlePushAllToSupabase = async () => {
     setIsSyncing(true);
     try {
-      const sheetInfo = await createStockSpreadsheet(
-        currentToken,
-        'ระบบสต๊อกและคำนวณวัตถุดิบ (Stock & Variance Tracking)'
-      );
-
-      await initializeSheetDataAndFormulas(
-        currentToken,
-        sheetInfo.spreadsheetId,
-        materials,
-        recipes,
-        productions,
-        transactions,
-        stockCountRecords
-      );
-
-      setSpreadsheetId(sheetInfo.spreadsheetId);
-      setSpreadsheetUrl(sheetInfo.spreadsheetUrl);
-      localStorage.setItem('stock_spreadsheet_id', sheetInfo.spreadsheetId);
-      localStorage.setItem('stock_spreadsheet_url', sheetInfo.spreadsheetUrl);
-      const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
-      setLastSyncTime(nowStr);
-      localStorage.setItem('stock_last_sync', nowStr);
-
-      await saveCloudSettings({
-        spreadsheetId: sheetInfo.spreadsheetId,
-        spreadsheetUrl: sheetInfo.spreadsheetUrl,
-        lastSyncTime: nowStr,
-      });
-
+      await seedInitialDataToSupabase(materials, recipes, productions, transactions);
+      showNotification('✅ บันทึกและซิงค์ข้อมูลทั้งหมดขึ้นฐานข้อมูลกลางเรียบร้อย!');
       confetti({
-        particleCount: 80,
-        spread: 60,
+        particleCount: 50,
+        spread: 45,
         origin: { y: 0.7 },
       });
-
-      showNotification('✨ สร้าง Google Sheet พร้อมบันทึกการเชื่อมต่อไปยังคลาวด์ถาวรแล้ว!');
-    } catch (err: any) {
-      console.error(err);
-      throw err;
+    } catch (e: any) {
+      showNotification(`⚠️ เกิดข้อผิดพลาดในการบันทึกไปที่ฐานข้อมูล: ${e.message}`);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  // Link Existing Spreadsheet (Export Web Data to Existing Sheet)
-  const handleLinkExistingSheet = async (sheetId: string) => {
-    let currentToken = token || (await getAccessToken());
-    if (!currentToken) {
-      const res = await googleSignIn();
-      if (!res) throw new Error('กรุณาเข้าสู่ระบบ Google');
-      currentToken = res.accessToken;
-      setUser(res.user);
-      setToken(res.accessToken);
+  // LINE Notify alert handler
+  const handleSendLineNotifyAlert = async () => {
+    const token = getLineNotifyToken();
+    if (!token) {
+      setIsLineNotifyModalOpen(true);
+      return;
     }
-
-    setIsSyncing(true);
-    try {
-      // Connect and push existing web data into this sheet (One-way export)
-      await initializeSheetDataAndFormulas(
-        currentToken,
-        sheetId,
-        materials,
-        recipes,
-        productions,
-        transactions,
-        stockCountRecords
-      );
-
-      setSpreadsheetId(sheetId);
-      const url = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
-      setSpreadsheetUrl(url);
-      localStorage.setItem('stock_spreadsheet_id', sheetId);
-      localStorage.setItem('stock_spreadsheet_url', url);
-      const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
-      setLastSyncTime(nowStr);
-      localStorage.setItem('stock_last_sync', nowStr);
-
-      await saveCloudSettings({
-        spreadsheetId: sheetId,
-        spreadsheetUrl: url,
-        lastSyncTime: nowStr,
+    const currentSummaries = generateMonthlySummary(materials, recipes, productions, transactions);
+    const lowStockItems = currentSummaries
+      .filter((s) => s.isLowStock)
+      .map((s) => {
+        const mat = materials.find((m) => m.RM_Code === s.RM_Code);
+        return {
+          ...s,
+          Safety_Stock: mat?.Safety_Stock || 0,
+        };
       });
 
-      showNotification('✅ เชื่อมต่อและบันทึกข้อมูล Google Sheet ไปยังคลาวด์เรียบร้อยแล้ว!');
-    } catch (err: any) {
-      console.error(err);
-      throw err;
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  // Push local data up to Google Sheets (One-Way Export to Google Drive or Webhook)
-  const handlePushAllToSheet = async () => {
-    const currentWebhook =
-      getEffectiveWebhookUrl() || webhookUrl || localStorage.getItem('stock_webhook_url');
-    const currentSheetId = spreadsheetId || localStorage.getItem('stock_spreadsheet_id');
-
-    if (!currentWebhook && !currentSheetId) {
-      setIsSyncModalOpen(true);
+    if (lowStockItems.length === 0) {
+      showNotification('✅ สต๊อกวัตถุดิบทุกรายการยังอยู่ในเกณฑ์ปลอดภัย ไม่มียอดวิกฤต');
       return;
     }
 
-    setIsSyncing(true);
     try {
-      if (currentWebhook) {
-        await syncViaWebhook(currentWebhook, {
-          materials,
-          recipes,
-          productions,
-          transactions,
-          monthlyStockCounts: stockCountRecords,
-        }, 'syncAll');
-      }
-
-      if (currentSheetId) {
-        let currentToken = token || (await getAccessToken());
-        if (!currentToken && !currentWebhook) {
-          const res = await googleSignIn();
-          if (res) {
-            currentToken = res.accessToken;
-            setUser(res.user);
-            setToken(res.accessToken);
-          }
-        }
-
-        if (currentToken) {
-          await initializeSheetDataAndFormulas(
-            currentToken,
-            currentSheetId,
-            materials,
-            recipes,
-            productions,
-            transactions,
-            stockCountRecords
-          );
-        }
-      }
-
-      const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
-      setLastSyncTime(nowStr);
-      localStorage.setItem('stock_last_sync', nowStr);
-      saveCloudSettings({ lastSyncTime: nowStr });
-      showNotification('✅ ส่งข้อมูลจริงทั้งหมดขึ้น Google Sheet สำเร็จแล้ว!');
-    } catch (err: any) {
-      console.error(err);
-      showNotification(`⚠️ ซิงค์ข้อมูลขัดข้อง: ${err.message}`);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  // Pull / Import data from Google Sheet down to Web Application
-  const handlePullFromGoogleSheet = async () => {
-    const targetWebhook =
-      (DEFAULT_WEBHOOK_URL && DEFAULT_WEBHOOK_URL.trim().startsWith('http') ? DEFAULT_WEBHOOK_URL.trim() : null) ||
-      webhookUrl ||
-      localStorage.getItem('stock_webhook_url');
-
-    const currentSheetId = spreadsheetId || localStorage.getItem('stock_spreadsheet_id');
-
-    if (!targetWebhook && !currentSheetId) {
-      setIsSyncModalOpen(true);
-      return;
-    }
-
-    setIsSyncing(true);
-    try {
-      let importedCount = 0;
-
-      if (targetWebhook) {
-        showNotification('⏳ กำลังดึงข้อมูลจาก Google Sheets Webhook...');
-        const sheetData = await fetchDataFromGoogleSheet(targetWebhook);
-        if (sheetData) {
-          if (sheetData.materials && sheetData.materials.length > 0) {
-            const clean = sanitizeMaterials(sheetData.materials);
-            setMaterials(clean);
-            importedCount += clean.length;
-          }
-          if (sheetData.recipes && sheetData.recipes.length > 0) {
-            const clean = sanitizeRecipes(sheetData.recipes);
-            setRecipes(clean);
-            importedCount += clean.length;
-          }
-          if (sheetData.productions && sheetData.productions.length > 0) {
-            setProductions(sheetData.productions);
-            importedCount += sheetData.productions.length;
-          }
-          if (sheetData.transactions && sheetData.transactions.length > 0) {
-            setTransactions(sheetData.transactions);
-            importedCount += sheetData.transactions.length;
-          }
-          if (sheetData.monthlyStockCounts && sheetData.monthlyStockCounts.length > 0) {
-            setStockCountRecords(sheetData.monthlyStockCounts);
-            importedCount += sheetData.monthlyStockCounts.length;
-          }
-        }
-      } else if (currentSheetId) {
-        let currentToken = token || (await getAccessToken());
-        if (!currentToken) {
-          const res = await googleSignIn();
-          if (res) {
-            currentToken = res.accessToken;
-            setUser(res.user);
-            setToken(res.accessToken);
-          }
-        }
-        if (currentToken) {
-          showNotification('⏳ กำลังดึงข้อมูลจาก Google Sheets API...');
-          const sheetData = await fetchAllSheetData(currentToken, currentSheetId);
-          if (sheetData) {
-            if (sheetData.materials && sheetData.materials.length > 0) {
-              const clean = sanitizeMaterials(sheetData.materials);
-              setMaterials(clean);
-              importedCount += clean.length;
-            }
-            if (sheetData.recipes && sheetData.recipes.length > 0) {
-              const clean = sanitizeRecipes(sheetData.recipes);
-              setRecipes(clean);
-              importedCount += clean.length;
-            }
-            if (sheetData.productions && sheetData.productions.length > 0) {
-              setProductions(sheetData.productions);
-              importedCount += sheetData.productions.length;
-            }
-            if (sheetData.transactions && sheetData.transactions.length > 0) {
-              setTransactions(sheetData.transactions);
-              importedCount += sheetData.transactions.length;
-            }
-          }
-        }
-      }
-
-      const nowStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
-      setLastSyncTime(nowStr);
-      localStorage.setItem('stock_last_sync', nowStr);
-      saveCloudSettings({ lastSyncTime: nowStr });
-
-      if (importedCount > 0) {
-        showNotification(`✅ ดึงข้อมูลจาก Google Sheets เข้ามาในเว็บสำเร็จ (${importedCount} รายการ)`);
+      const res = await sendLowStockAlertNotification(lowStockItems, token);
+      if (res.success) {
+        showNotification(`📲 ส่งการแจ้งเตือนเตือนสต๊อกต่ำ ${lowStockItems.length} รายการเข้า LINE เรียบร้อยแล้ว`);
       } else {
-        showNotification('ℹ️ เชื่อมต่อ Google Sheet สำเร็จ แต่ยังไม่พบรายการข้อมูลในชีท');
+        showNotification(`⚠️ ไม่สามารถส่ง LINE Notify ได้: ${res.message}`);
       }
     } catch (err: any) {
-      console.error(err);
-      showNotification(`⚠️ ไม่สามารถดึงข้อมูลจาก Google Sheet ได้: ${err.message}`);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  // Disconnect Sheet
-  const handleDisconnectSheet = () => {
-    if (window.confirm('คุณต้องการยกเลิกการเชื่อมต่อกับ Google Sheet นี้ใช่หรือไม่? (ข้อมูลในเว็บและในชีทจะไม่ถูกลบ)')) {
-      setSpreadsheetId(null);
-      setSpreadsheetUrl(null);
-      setWebhookUrl(null);
-      setLastSyncTime(null);
-      localStorage.removeItem('stock_spreadsheet_id');
-      localStorage.removeItem('stock_spreadsheet_url');
-      localStorage.removeItem('stock_webhook_url');
-      localStorage.removeItem('stock_last_sync');
-      saveCloudSettings({
-        spreadsheetId: null,
-        spreadsheetUrl: null,
-        webhookUrl: null,
-        lastSyncTime: null,
-      });
-      showNotification('ยกเลิกการเชื่อมต่อกับ Google Sheet เรียบร้อย');
+      showNotification(`⚠️ ไม่สามารถส่ง LINE Notify ได้: ${err.message}`);
     }
   };
 
@@ -1341,6 +783,7 @@ export default function App() {
     nextMats = sanitizeMaterials(nextMats);
     setMaterials(nextMats);
     triggerAutoSync({ materials: nextMats });
+    upsertMasterMaterial(sanitizedMat).catch(console.warn);
   };
 
   // 2. Update Material
@@ -1353,6 +796,7 @@ export default function App() {
     setMaterials(nextMats);
     showNotification(`อัปเดตข้อมูล ${mat.RM_Name} สำเร็จ`);
     triggerAutoSync({ materials: nextMats });
+    upsertMasterMaterial(sanitizedMat).catch(console.warn);
   };
 
   // 3. Add Recipe Item
@@ -1377,6 +821,7 @@ export default function App() {
     setRecipes(nextRecipes);
     showNotification(`บันทึกสูตร ${recipe.Product_Code} (${recipe.RM_Code}) เรียบร้อย`);
     triggerAutoSync({ recipes: nextRecipes });
+    upsertBOMRecipe(sanitizedRecipe).catch(console.warn);
   };
 
   // 4. Save/Edit Transaction
@@ -1407,6 +852,7 @@ export default function App() {
     setTransactions(nextTxs);
     localStorage.setItem('stock_transactions', JSON.stringify(nextTxs));
     triggerAutoSync({ transactions: nextTxs });
+    saveStockTransaction(fullTx).catch(console.warn);
   };
 
   const handleEditTransaction = (tx: StockTransaction, index: number) => {
@@ -1471,6 +917,7 @@ export default function App() {
         nextTxs = [...newAutoTxs, ...filteredTxs];
         setTransactions(nextTxs);
         localStorage.setItem('stock_transactions', JSON.stringify(nextTxs));
+        newAutoTxs.forEach((atx) => saveStockTransaction(atx).catch(console.warn));
         showNotification(
           `✅ แก้ไขยอดผลิต ${fullProd.Product_Code} (${fullProd.Produced_Qty} ชิ้น) และปรับยอดตัดสต็อกวัตถุดิบ ${newAutoTxs.length} รายการให้อัตโนมัติ!`
         );
@@ -1496,6 +943,7 @@ export default function App() {
           nextTxs = [...newAutoTxs, ...nextTxs];
           setTransactions(nextTxs);
           localStorage.setItem('stock_transactions', JSON.stringify(nextTxs));
+          newAutoTxs.forEach((atx) => saveStockTransaction(atx).catch(console.warn));
         }
         showNotification(
           `✅ บันทึกยอดผลิต ${fullProd.Product_Code} (${fullProd.Produced_Qty} ชิ้น) และตัดสต็อกวัตถุดิบ ${newAutoTxs.length} รายการอัตโนมัติ!`
@@ -1508,6 +956,7 @@ export default function App() {
     setProductions(nextProds);
     localStorage.setItem('stock_productions', JSON.stringify(nextProds));
     triggerAutoSync({ productions: nextProds, transactions: nextTxs });
+    saveDailyProduction(fullProd).catch(console.warn);
   };
 
   const handleEditProduction = (prod: DailyProduction, index: number) => {
@@ -1550,6 +999,7 @@ export default function App() {
 
     const nextTxs = [...newAutoTxs, ...filteredTxs];
     setTransactions(nextTxs);
+    newAutoTxs.forEach((atx) => saveStockTransaction(atx).catch(console.warn));
     showNotification(`⚡ ตัดสต็อกวัตถุดิบ ${newAutoTxs.length} รายการตามสูตร BOM x ยอดผลิต ${prod.Produced_Qty} ชิ้น เรียบร้อยแล้ว!`);
     triggerAutoSync({ transactions: nextTxs });
   };
@@ -1577,23 +1027,13 @@ export default function App() {
         isAdminAuthenticated={isAdminAuthenticated}
         onRequestAdminAuth={handleRequestAdminAuth}
         onLockAdmin={handleLockAdmin}
-        user={user}
-        spreadsheetId={spreadsheetId}
-        spreadsheetUrl={spreadsheetUrl}
-        webhookUrl={webhookUrl}
-        autoSyncEnabled={autoSyncEnabled}
-        lastSyncTime={lastSyncTime}
+        isSupabaseConnected={isSupabaseConnected}
         isSyncing={isSyncing}
-        onOpenSyncModal={() => {
-          if (!isAdminAuthenticated) {
-            handleRequestAdminAuth();
-          } else {
-            setIsSyncModalOpen(true);
-          }
-        }}
+        onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
+        onOpenLineNotifyModal={() => setIsLineNotifyModalOpen(true)}
         onOpenFormulaModal={() => setIsFormulaModalOpen(true)}
-        onOpenNewTxModal={(type = 'Receive') => {
-          setInitialTxType(type);
+        onOpenNewTxModal={() => {
+          setInitialTxType('Receive');
           setIsNewTxModalOpen(true);
         }}
         onOpenNewProdModal={() => setIsNewProdModalOpen(true)}
@@ -1605,10 +1045,7 @@ export default function App() {
             setIsClearDataModalOpen(true);
           }
         }}
-        onSyncNow={handlePushAllToSheet}
-        onPullFromSheet={handlePullFromGoogleSheet}
-        onSignIn={handleSignIn}
-        onSignOut={handleSignOut}
+        onSyncNow={handleSyncSupabase}
         lowStockCount={lowStockCount}
       />
 
@@ -1634,9 +1071,9 @@ export default function App() {
             recipes={recipes}
             productions={productions}
             transactions={transactions}
-            spreadsheetId={spreadsheetId}
-            spreadsheetUrl={spreadsheetUrl}
-            onOpenSyncModal={() => setIsSyncModalOpen(true)}
+            isSupabaseConnected={isSupabaseConnected}
+            onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
+            onOpenLineNotifyModal={() => setIsLineNotifyModalOpen(true)}
             onOpenFormulaGuide={() => setIsFormulaModalOpen(true)}
             onSelectMaterialDetail={(code) => setSelectedMaterialDetail(code)}
             onNavigateToTab={(tabName) => setActiveTab(tabName)}
@@ -1857,45 +1294,22 @@ export default function App() {
         summaries={summaries}
       />
 
-      <PopupBlockedModal
-        isOpen={isPopupBlockedModalOpen}
-        onClose={() => setIsPopupBlockedModalOpen(false)}
-        onRetry={() => {
-          setIsPopupBlockedModalOpen(false);
-          handleSignIn();
-        }}
-        onOpenSyncModal={() => {
-          if (!isAdminAuthenticated) {
-            handleRequestAdminAuth();
-          } else {
-            setIsSyncModalOpen(true);
-          }
-        }}
-      />
-
-      <GoogleSheetsSyncModal
-        isOpen={isSyncModalOpen}
-        onClose={() => setIsSyncModalOpen(false)}
-        user={user}
-        spreadsheetId={spreadsheetId}
-        spreadsheetUrl={spreadsheetUrl}
-        webhookUrl={webhookUrl}
-        autoSyncEnabled={autoSyncEnabled}
-        onToggleAutoSync={handleToggleAutoSync}
-        isSyncing={isSyncing}
-        onSaveWebhookUrl={handleSaveWebhookUrl}
-        onSignIn={handleSignIn}
-        onCreateNewSheet={handleCreateNewSheet}
-        onLinkExistingSheet={handleLinkExistingSheet}
-        onPushAllToSheet={handlePushAllToSheet}
-        onPullFromSheet={handlePullFromGoogleSheet}
-        onDisconnectSheet={handleDisconnectSheet}
+      <SupabaseSyncModal
+        isOpen={isSupabaseModalOpen}
+        onClose={() => setIsSupabaseModalOpen(false)}
+        onRefreshData={handleSyncSupabase}
+        onShowNotification={showNotification}
         materials={materials}
         recipes={recipes}
         productions={productions}
         transactions={transactions}
-        stockCountRecords={stockCountRecords}
-        onImportExcelData={handleImportExcelData}
+      />
+
+      <LineNotifyModal
+        isOpen={isLineNotifyModalOpen}
+        onClose={() => setIsLineNotifyModalOpen(false)}
+        summaries={summaries}
+        onShowNotification={showNotification}
       />
     </div>
   );

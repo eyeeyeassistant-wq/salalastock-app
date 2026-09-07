@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import {
   Package,
-  FileSpreadsheet,
+  Database,
   Layers,
   CalendarCheck,
   ClipboardCheck,
@@ -20,13 +20,12 @@ import {
   Lock,
   Trash2,
   BarChart3,
-  Cloud,
   ChevronLeft,
   ChevronRight,
   Menu,
+  Bell,
 } from 'lucide-react';
 import { ActiveTab, UserRole } from '../types/stock';
-import { User } from 'firebase/auth';
 
 interface NavbarProps {
   activeTab: ActiveTab;
@@ -36,23 +35,16 @@ interface NavbarProps {
   isAdminAuthenticated: boolean;
   onRequestAdminAuth: () => void;
   onLockAdmin: () => void;
-  user: User | null;
-  spreadsheetId: string | null;
-  spreadsheetUrl: string | null;
-  webhookUrl: string | null;
-  autoSyncEnabled: boolean;
-  lastSyncTime: string | null;
+  isSupabaseConnected: boolean;
   isSyncing: boolean;
-  onOpenSyncModal: () => void;
+  onOpenSupabaseModal: () => void;
+  onOpenLineNotifyModal: () => void;
   onOpenFormulaModal: () => void;
   onOpenNewTxModal: () => void;
   onOpenNewProdModal: () => void;
   onOpenOpeningStockModal: () => void;
   onOpenClearDataModal: () => void;
   onSyncNow: () => void;
-  onPullFromSheet?: () => void;
-  onSignIn: () => void;
-  onSignOut: () => void;
   lowStockCount: number;
 }
 
@@ -64,23 +56,16 @@ export const Navbar: React.FC<NavbarProps> = ({
   isAdminAuthenticated,
   onRequestAdminAuth,
   onLockAdmin,
-  user,
-  spreadsheetId,
-  spreadsheetUrl,
-  webhookUrl,
-  autoSyncEnabled,
-  lastSyncTime,
+  isSupabaseConnected,
   isSyncing,
-  onOpenSyncModal,
+  onOpenSupabaseModal,
+  onOpenLineNotifyModal,
   onOpenFormulaModal,
   onOpenNewTxModal,
   onOpenNewProdModal,
   onOpenOpeningStockModal,
   onOpenClearDataModal,
   onSyncNow,
-  onPullFromSheet,
-  onSignIn,
-  onSignOut,
   lowStockCount,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -234,8 +219,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           },
           {
             id: 'formulas' as ActiveTab,
-            name: 'สูตร Google Sheets',
-            sub: 'Formula Guide',
+            name: 'คู่มือระบบ & สูตร',
+            sub: 'System & Formula Guide',
             icon: BookOpen,
             color: 'text-purple-400',
             badge: null,
@@ -260,12 +245,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <h1 className="text-sm sm:text-base md:text-lg font-bold text-slate-100 tracking-tight truncate">
                   ระบบจัดการสต๊อก & Variance
                 </h1>
-                <span className="text-[10px] sm:text-[11px] bg-blue-500/20 text-blue-300 font-semibold px-2 py-0.5 rounded-full border border-blue-500/30 uppercase tracking-wider hidden md:inline shrink-0">
-                  Stock & Variance
+                <span className="text-[10px] sm:text-[11px] bg-emerald-500/20 text-emerald-300 font-semibold px-2 py-0.5 rounded-full border border-emerald-500/30 uppercase tracking-wider hidden md:inline shrink-0">
+                  Cloud DB
                 </span>
               </div>
               <p className="text-[11px] sm:text-xs text-slate-400 truncate hidden xs:block">
-                ตัดสต็อกอัตโนมัติ • คำนวณ Waste • ซิงค์ Google Sheets
+                ตัดสต็อกอัตโนมัติ • ฐานข้อมูลกลาง Cloud • แจ้งเตือน LINE
               </p>
             </div>
           </div>
@@ -336,78 +321,48 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
 
-            {/* Cloud Persistence Badge */}
-            <div
-              className="hidden lg:inline-flex items-center gap-1.5 bg-sky-950/70 border border-sky-600/40 rounded-lg px-2.5 py-1.5 text-xs text-sky-200"
-              title="ข้อมูลและประวัติทั้งหมดได้รับการบันทึกบน Cloud Firestore แบบถาวร เปิดจากเครื่องไหนหรือผ่านไปกี่วันข้อมูลก็ไม่หาย"
+            {/* LINE Notify Button */}
+            <button
+              onClick={onOpenLineNotifyModal}
+              id="btn-line-notify-navbar"
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all min-h-[36px] shadow-xs ${
+                lowStockCount > 0
+                  ? 'bg-rose-950/70 border-rose-600/70 text-rose-300 hover:bg-rose-900 animate-pulse'
+                  : 'bg-emerald-950/60 border-emerald-600/40 text-emerald-300 hover:bg-emerald-900/60'
+              }`}
+              title="ตั้งค่าและส่งแจ้งเตือนสต็อกผ่าน LINE Notify"
             >
-              <Cloud className="w-3.5 h-3.5 text-sky-400" />
-              <span className="font-medium text-[11px]">Cloud Database</span>
-            </div>
+              <Bell className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">แจ้งเตือน LINE</span>
+              {lowStockCount > 0 && (
+                <span className="bg-rose-600 text-white font-bold text-[10px] px-1.5 py-0.2 rounded-full">
+                  {lowStockCount}
+                </span>
+              )}
+            </button>
 
-            {/* Live Google Sheets Auto-Sync Status & Controls */}
-            <div className="flex items-center gap-1.5 sm:gap-2 bg-emerald-950/80 border border-emerald-500/50 rounded-lg px-2.5 sm:px-3 py-1 text-xs text-emerald-200 min-h-[36px] shadow-sm shadow-emerald-950/40">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${isSyncing ? 'bg-amber-400 animate-ping' : 'bg-emerald-400 animate-pulse'}`}></span>
-              <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />
+            {/* Cloud Database Badge & Modal Trigger */}
+            <button
+              onClick={onOpenSupabaseModal}
+              id="btn-cloud-db-status"
+              className={`flex items-center gap-1.5 sm:gap-2 border rounded-lg px-2.5 sm:px-3 py-1 text-xs min-h-[36px] shadow-xs transition-colors ${
+                isSupabaseConnected
+                  ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200 hover:bg-emerald-900'
+                  : 'bg-amber-950/80 border-amber-500/50 text-amber-200 hover:bg-amber-900'
+              }`}
+              title="ตั้งค่าเชื่อมต่อฐานข้อมูลกลาง (Cloud Database)"
+            >
+              <span className={`w-2 h-2 rounded-full shrink-0 ${isSyncing ? 'bg-amber-400 animate-ping' : isSupabaseConnected ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`}></span>
+              <Database className="w-4 h-4 text-emerald-400 shrink-0" />
               <div className="flex flex-col text-left pr-1">
-                <span className="font-bold text-xs text-emerald-100 flex items-center gap-1 leading-tight">
-                  {isSyncing ? 'กำลังบันทึกลงชีท...' : 'ซิงค์ Sheets อัตโนมัติ'}
+                <span className="font-bold text-xs text-slate-100 flex items-center gap-1 leading-tight">
+                  {isSyncing ? 'กำลังบันทึก DB...' : 'ฐานข้อมูลกลาง (Cloud DB)'}
                 </span>
-                <span className="text-[10px] text-emerald-300/80 hidden sm:inline leading-tight">
-                  กรอก/แก้ไข เข้าชีททันที
+                <span className="text-[10px] text-emerald-400 leading-tight hidden sm:inline">
+                  {isSupabaseConnected ? '🟢 เชื่อมต่อแล้ว' : '🟡 ตั้งค่าฐานข้อมูล'}
                 </span>
               </div>
-
-              {/* Refresh / Re-fetch from Sheets button */}
-              {onPullFromSheet && (
-                <button
-                  onClick={onPullFromSheet}
-                  disabled={isSyncing}
-                  title="รีเฟรช / ดึงข้อมูลล่าสุดจาก Google Sheets อีกครั้ง"
-                  className="hover:bg-emerald-900/80 p-1.5 rounded-md text-emerald-300 hover:text-white transition-colors"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                </button>
-              )}
-
-              {/* View Google Sheets Link */}
-              {spreadsheetUrl && (
-                <a
-                  href={spreadsheetUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  title="เปิดดูไฟล์ Google Sheets ในแท็บใหม่"
-                  className="hover:bg-emerald-900/80 p-1.5 rounded-md text-emerald-300 hover:text-white transition-colors"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              )}
-            </div>
-
-            {/* User Account if signed in */}
-            {user && (
-              <div className="flex items-center gap-1.5 pl-1 sm:pl-2 border-l border-slate-700">
-                {user.photoURL ? (
-                  <img
-                    src={user.photoURL}
-                    alt={user.displayName || 'User'}
-                    className="w-7 h-7 rounded-full border border-slate-600"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold text-white">
-                    {user.email?.[0].toUpperCase() || 'U'}
-                  </div>
-                )}
-                <button
-                  onClick={onSignOut}
-                  title="ออกจากระบบ"
-                  className="text-slate-400 hover:text-slate-200 p-1 transition-colors"
-                >
-                  <LogOut className="w-4 h-4" />
-                </button>
-              </div>
-            )}
+            </button>
           </div>
         </div>
 

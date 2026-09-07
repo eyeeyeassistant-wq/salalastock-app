@@ -52,6 +52,8 @@ import {
   RotateCcw,
   FileSpreadsheet,
   ExternalLink,
+  Database,
+  Bell,
 } from 'lucide-react';
 
 interface MonthlyDashboardTabProps {
@@ -59,9 +61,9 @@ interface MonthlyDashboardTabProps {
   recipes: BOMRecipe[];
   productions: DailyProduction[];
   transactions: StockTransaction[];
-  spreadsheetId?: string | null;
-  spreadsheetUrl?: string | null;
-  onOpenSyncModal?: () => void;
+  isSupabaseConnected?: boolean;
+  onOpenSupabaseModal?: () => void;
+  onOpenLineNotifyModal?: () => void;
   onOpenFormulaGuide: () => void;
   onSelectMaterialDetail: (rmCode: string) => void;
   onNavigateToTab: (tabName: any) => void;
@@ -87,9 +89,9 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
   recipes,
   productions,
   transactions,
-  spreadsheetId,
-  spreadsheetUrl,
-  onOpenSyncModal,
+  isSupabaseConnected = true,
+  onOpenSupabaseModal,
+  onOpenLineNotifyModal,
   onOpenFormulaGuide,
   onSelectMaterialDetail,
   onNavigateToTab,
@@ -378,43 +380,32 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
               </button>
             </div>
 
-            {/* Google Sheets Access for Admin */}
-            {spreadsheetId ? (
-              <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-300 rounded-xl px-3 py-1.5 shadow-xs">
-                <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
-                {spreadsheetUrl && (
-                  <a
-                    href={spreadsheetUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 hover:text-emerald-950 hover:underline"
-                    title="เปิดดูรายงานสต็อกใน Google Sheets"
-                  >
-                    <span>เปิดดูใน Google Sheets</span>
-                    <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />
-                  </a>
-                )}
-                {onOpenSyncModal && (
-                  <button
-                    onClick={onOpenSyncModal}
-                    className="ml-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 bg-white px-2 py-0.5 rounded-md border border-emerald-200"
-                    title="จัดการการส่งข้อมูลขึ้น Google Sheets"
-                  >
-                    จัดการ
-                  </button>
-                )}
-              </div>
-            ) : (
-              onOpenSyncModal && (
-                <button
-                  onClick={onOpenSyncModal}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-colors shrink-0"
-                  title="เชื่อมต่อและสร้าง Google Sheet เก็บข้อมูล"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  <span>เชื่อมต่อ Google Sheets</span>
-                </button>
-              )
+            {/* LINE Notify Action */}
+            {onOpenLineNotifyModal && (
+              <button
+                onClick={onOpenLineNotifyModal}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-colors shrink-0"
+                title="ส่งแจ้งเตือนสต็อกเข้า LINE Notify"
+              >
+                <Bell className="w-3.5 h-3.5" />
+                <span>แจ้งเตือน LINE</span>
+              </button>
+            )}
+
+            {/* Database Status */}
+            {onOpenSupabaseModal && (
+              <button
+                onClick={onOpenSupabaseModal}
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border shadow-xs transition-colors shrink-0 ${
+                  isSupabaseConnected
+                    ? 'bg-slate-900 hover:bg-slate-800 text-slate-100 border-slate-700'
+                    : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                }`}
+                title="จัดการและตรวจสอบสถานะฐานข้อมูลกลาง (Cloud Database)"
+              >
+                <Database className="w-3.5 h-3.5 text-emerald-400" />
+                <span>ฐานข้อมูลกลาง {isSupabaseConnected ? '🟢 พร้อมใช้' : '🟡 ตั้งค่า'}</span>
+              </button>
             )}
 
             <button
