@@ -172,22 +172,6 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
 
   const totalDispatched = totalDispatchA + totalDispatchB;
 
-  const totalLeftoverA = useMemo(
-    () => filteredProductions.reduce((sum, p) => sum + (Number(p.Leftover_Branch_A) || 0), 0),
-    [filteredProductions]
-  );
-
-  const totalLeftoverB = useMemo(
-    () => filteredProductions.reduce((sum, p) => sum + (Number(p.Leftover_Branch_B) || 0), 0),
-    [filteredProductions]
-  );
-
-  const totalLeftover = totalLeftoverA + totalLeftoverB;
-
-  const leftoverRate = totalDispatched > 0 ? (totalLeftover / totalDispatched) * 100 : 0;
-  const branchALeftoverRate = totalDispatchA > 0 ? (totalLeftoverA / totalDispatchA) * 100 : 0;
-  const branchBLeftoverRate = totalDispatchB > 0 ? (totalLeftoverB / totalDispatchB) * 100 : 0;
-
   // Material Variance KPIs
   const overusedMaterials = useMemo(
     () => periodSummaries.filter((s) => s.isOverused && s.Variance > 0),
@@ -220,18 +204,17 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
 
   // 1. Daily Production & Dispatch Trend
   const dailyTrendData = useMemo(() => {
-    const mapByDate = new Map<string, { date: string; produced: number; dispatchA: number; dispatchB: number; leftover: number }>();
+    const mapByDate = new Map<string, { date: string; produced: number; dispatchA: number; dispatchB: number }>();
 
     filteredProductions.forEach((p) => {
       const d = p.Date;
       if (!mapByDate.has(d)) {
-        mapByDate.set(d, { date: d, produced: 0, dispatchA: 0, dispatchB: 0, leftover: 0 });
+        mapByDate.set(d, { date: d, produced: 0, dispatchA: 0, dispatchB: 0 });
       }
       const item = mapByDate.get(d)!;
       item.produced += Number(p.Produced_Qty) || 0;
       item.dispatchA += Number(p.Dispatch_Branch_A) || 0;
       item.dispatchB += Number(p.Dispatch_Branch_B) || 0;
-      item.leftover += (Number(p.Leftover_Branch_A) || 0) + (Number(p.Leftover_Branch_B) || 0);
     });
 
     return Array.from(mapByDate.values()).sort((a, b) => a.date.localeCompare(b.date));
@@ -270,11 +253,6 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
   const branchDispatchPieData = [
     { name: 'สาขา A (Branch A)', value: totalDispatchA, color: '#3B82F6' },
     { name: 'สาขา B (Branch B)', value: totalDispatchB, color: '#10B981' },
-  ].filter((d) => d.value > 0);
-
-  const branchLeftoverPieData = [
-    { name: 'ของเหลือสาขา A', value: totalLeftoverA, color: '#F59E0B' },
-    { name: 'ของเหลือสาขา B', value: totalLeftoverB, color: '#EF4444' },
   ].filter((d) => d.value > 0);
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
@@ -334,7 +312,7 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
                   สรุปแดชบอร์ดรายเดือน (Monthly Executive Dashboard)
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  วิเคราะห์ผลผลิต การจัดส่งรายสาขา ของเหลือ และผลต่างการใช้วัตถุดิบ (Variance) ประจำงวด
+                  วิเคราะห์ผลผลิต การจัดส่งรายสาขา และผลต่างการใช้วัตถุดิบ (Variance) ประจำงวด
                 </p>
               </div>
             </div>
@@ -783,28 +761,26 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
                 A
               </div>
               <div>
-                <h4 className="text-sm font-bold text-slate-900">สรุปผลงาน สาขา A</h4>
-                <p className="text-[11px] text-slate-500">ยอดกระจายสินค้าและของเหลือประจำงวด</p>
+                <h4 className="text-sm font-bold text-slate-900">สรุปการจัดส่ง สาขา A</h4>
+                <p className="text-[11px] text-slate-500">ยอดกระจายสินค้าประจำงวด</p>
               </div>
             </div>
             <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-blue-100 text-blue-800">
-              Loss: {branchALeftoverRate.toFixed(1)}%
+              สัดส่วน {totalDispatched > 0 ? ((totalDispatchA / totalDispatched) * 100).toFixed(1) : '0.0'}%
             </span>
           </div>
 
-          <div className="mt-4 grid grid-cols-3 gap-2 text-center bg-white p-3 rounded-xl border border-blue-100">
+          <div className="mt-4 grid grid-cols-2 gap-3 text-center bg-white p-3 rounded-xl border border-blue-100">
             <div>
-              <div className="text-[11px] text-slate-500">ยอดรับสินค้า</div>
-              <div className="text-base font-bold text-slate-900 font-mono">{totalDispatchA.toLocaleString()}</div>
+              <div className="text-[11px] text-slate-500">ยอดส่งสินค้ารวม</div>
+              <div className="text-lg font-bold text-blue-700 font-mono">
+                {totalDispatchA.toLocaleString()} <span className="text-xs font-normal text-slate-400">ชิ้น</span>
+              </div>
             </div>
             <div>
-              <div className="text-[11px] text-slate-500">ยอดของเหลือ</div>
-              <div className="text-base font-bold text-amber-600 font-mono">{totalLeftoverA.toLocaleString()}</div>
-            </div>
-            <div>
-              <div className="text-[11px] text-slate-500">ขายได้จริง</div>
-              <div className="text-base font-bold text-emerald-600 font-mono">
-                {Math.max(0, totalDispatchA - totalLeftoverA).toLocaleString()}
+              <div className="text-[11px] text-slate-500">สัดส่วนจากยอดส่งรวม</div>
+              <div className="text-lg font-bold text-slate-900 font-mono">
+                {totalDispatched > 0 ? ((totalDispatchA / totalDispatched) * 100).toFixed(0) : 0}%
               </div>
             </div>
           </div>
@@ -818,28 +794,26 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
                 B
               </div>
               <div>
-                <h4 className="text-sm font-bold text-slate-900">สรุปผลงาน สาขา B</h4>
-                <p className="text-[11px] text-slate-500">ยอดกระจายสินค้าและของเหลือประจำงวด</p>
+                <h4 className="text-sm font-bold text-slate-900">สรุปการจัดส่ง สาขา B</h4>
+                <p className="text-[11px] text-slate-500">ยอดกระจายสินค้าประจำงวด</p>
               </div>
             </div>
             <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800">
-              Loss: {branchBLeftoverRate.toFixed(1)}%
+              สัดส่วน {totalDispatched > 0 ? ((totalDispatchB / totalDispatched) * 100).toFixed(1) : '0.0'}%
             </span>
           </div>
 
-          <div className="mt-4 grid grid-cols-3 gap-2 text-center bg-white p-3 rounded-xl border border-indigo-100">
+          <div className="mt-4 grid grid-cols-2 gap-3 text-center bg-white p-3 rounded-xl border border-indigo-100">
             <div>
-              <div className="text-[11px] text-slate-500">ยอดรับสินค้า</div>
-              <div className="text-base font-bold text-slate-900 font-mono">{totalDispatchB.toLocaleString()}</div>
+              <div className="text-[11px] text-slate-500">ยอดส่งสินค้ารวม</div>
+              <div className="text-lg font-bold text-indigo-700 font-mono">
+                {totalDispatchB.toLocaleString()} <span className="text-xs font-normal text-slate-400">ชิ้น</span>
+              </div>
             </div>
             <div>
-              <div className="text-[11px] text-slate-500">ยอดของเหลือ</div>
-              <div className="text-base font-bold text-amber-600 font-mono">{totalLeftoverB.toLocaleString()}</div>
-            </div>
-            <div>
-              <div className="text-[11px] text-slate-500">ขายได้จริง</div>
-              <div className="text-base font-bold text-emerald-600 font-mono">
-                {Math.max(0, totalDispatchB - totalLeftoverB).toLocaleString()}
+              <div className="text-[11px] text-slate-500">สัดส่วนจากยอดส่งรวม</div>
+              <div className="text-lg font-bold text-slate-900 font-mono">
+                {totalDispatched > 0 ? ((totalDispatchB / totalDispatched) * 100).toFixed(0) : 0}%
               </div>
             </div>
           </div>

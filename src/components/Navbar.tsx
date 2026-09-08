@@ -272,7 +272,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     ? 'bg-blue-600 text-white shadow-xs'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
-                title="โหมดพนักงาน: สำหรับกรอกยอดผลิต จัดส่ง ของเหลือ และเบิกรับวัตถุดิบ"
+                title="โหมดพนักงาน: สำหรับกรอกยอดผลิต จัดส่งสาขา และเบิกรับวัตถุดิบ"
               >
                 <UserCheck className="w-3.5 h-3.5 text-blue-300" />
                 <span>พนักงาน</span>

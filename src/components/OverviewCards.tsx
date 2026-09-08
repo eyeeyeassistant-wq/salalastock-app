@@ -5,7 +5,6 @@ import {
   TrendingDown,
   Calendar,
   Truck,
-  Archive,
 } from 'lucide-react';
 import { MonthlyStockSummary, DailyProduction } from '../types/stock';
 
@@ -28,10 +27,9 @@ export const OverviewCards: React.FC<OverviewCardsProps> = ({
 
   const totalProduced = productions.reduce((acc, p) => acc + (p.Produced_Qty || 0), 0);
   const totalDispatched = productions.reduce((acc, p) => acc + (p.Total_Dispatched || 0), 0);
-  const totalLeftover = productions.reduce((acc, p) => acc + (p.Total_Leftover || 0), 0);
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-6">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
       {/* 1. Total Materials */}
       <div
         onClick={() => onSelectFilter && onSelectFilter('all')}
@@ -123,18 +121,6 @@ export const OverviewCards: React.FC<OverviewCardsProps> = ({
         </div>
         <div className="text-2xl sm:text-3xl font-bold text-slate-900">{totalDispatched.toLocaleString()}</div>
         <div className="text-[11px] text-slate-400 mt-1">สาขา A + สาขา B</div>
-      </div>
-
-      {/* 6. Total Leftover */}
-      <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-xs">
-        <div className="flex items-center justify-between text-slate-500 mb-1">
-          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">ของเหลือหน้าร้าน</span>
-          <div className="w-7 h-7 rounded-lg bg-purple-50 flex items-center justify-center text-purple-600">
-            <Archive className="w-4 h-4" />
-          </div>
-        </div>
-        <div className="text-2xl sm:text-3xl font-bold text-slate-900">{totalLeftover.toLocaleString()}</div>
-        <div className="text-[11px] text-slate-400 mt-1">ของเหลือรวม 2 สาขา</div>
       </div>
     </div>
   );

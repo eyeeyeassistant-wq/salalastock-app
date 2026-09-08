@@ -91,7 +91,7 @@ export const ClearDataModal: React.FC<ClearDataModalProps> = ({
                     Tab 3: บันทึกการผลิตรายวัน (Daily Production)
                   </div>
                   <div className="text-[11px] text-slate-500">
-                    ยอดผลิต, ส่งสาขา A/B, ของเหลือสาขา A/B
+                    ยอดผลิต และยอดจัดส่งสาขา A/B
                   </div>
                 </div>
               </div>

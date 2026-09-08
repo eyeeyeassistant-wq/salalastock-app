@@ -17,6 +17,10 @@ import {
   INITIAL_RECIPES,
   INITIAL_DAILY_PRODUCTION,
   INITIAL_TRANSACTIONS,
+  DEMO_MATERIALS,
+  DEMO_RECIPES,
+  DEMO_DAILY_PRODUCTION,
+  DEMO_TRANSACTIONS,
 } from './data/initialData';
 import {
   generateMonthlySummary,
@@ -94,6 +98,18 @@ export default function App() {
 
   // Core Data State (Saved to Supabase PostgreSQL & localStorage fallback)
   const [materials, setMaterials] = useState<MasterMaterial[]>(() => {
+    // One-time purge of previously loaded sample data in browser cache
+    const samplePurged = localStorage.getItem('stock_sample_cleaned_v2');
+    if (!samplePurged) {
+      localStorage.setItem('stock_materials', JSON.stringify([]));
+      localStorage.setItem('stock_recipes', JSON.stringify([]));
+      localStorage.setItem('stock_productions', JSON.stringify([]));
+      localStorage.setItem('stock_transactions', JSON.stringify([]));
+      localStorage.setItem('stock_count_records', JSON.stringify([]));
+      localStorage.setItem('stock_sample_cleaned_v2', 'true');
+      return [];
+    }
+
     const saved = localStorage.getItem('stock_materials');
     if (saved !== null) {
       try {
@@ -105,7 +121,7 @@ export default function App() {
         return [];
       }
     }
-    return INITIAL_MATERIALS;
+    return [];
   });
 
   const [recipes, setRecipes] = useState<BOMRecipe[]>(() => {
@@ -120,7 +136,7 @@ export default function App() {
         return [];
       }
     }
-    return INITIAL_RECIPES;
+    return [];
   });
 
   const [productions, setProductions] = useState<DailyProduction[]>(() => {
@@ -135,7 +151,7 @@ export default function App() {
         return [];
       }
     }
-    return INITIAL_DAILY_PRODUCTION;
+    return [];
   });
 
   const [transactions, setTransactions] = useState<StockTransaction[]>(() => {
@@ -150,7 +166,7 @@ export default function App() {
         return [];
       }
     }
-    return INITIAL_TRANSACTIONS;
+    return [];
   });
 
   const [stockCountRecords, setStockCountRecords] = useState<MonthlyStockCountRecord[]>(() => {
@@ -196,6 +212,44 @@ export default function App() {
         ]);
 
         if (mats.length > 0 || recs.length > 0 || prods.length > 0 || txs.length > 0) {
+          // Check if existing data is the default bakery sample dataset
+          const isOldSampleData =
+            mats &&
+            mats.length <= 8 &&
+            mats.some(
+              (m) =>
+                m.RM_Code === 'RM001' &&
+                (m.RM_Name.includes('แป้งสาลี') || m.RM_Name.includes('Flour'))
+            );
+
+          const dbSamplePurged = localStorage.getItem('stock_cloud_sample_purged_v2');
+
+          if (isOldSampleData && !dbSamplePurged) {
+            // Purge sample data from cloud database as requested
+            await Promise.allSettled([
+              clearSupabaseTable('stock_transactions'),
+              clearSupabaseTable('daily_production'),
+              clearSupabaseTable('bom_recipe'),
+              clearSupabaseTable('master_materials'),
+              clearSupabaseTable('monthly_stock_counts'),
+            ]);
+            localStorage.setItem('stock_cloud_sample_purged_v2', 'true');
+            setMaterials([]);
+            setRecipes([]);
+            setProductions([]);
+            setTransactions([]);
+            setStockCountRecords([]);
+            localStorage.setItem('stock_materials', JSON.stringify([]));
+            localStorage.setItem('stock_recipes', JSON.stringify([]));
+            localStorage.setItem('stock_productions', JSON.stringify([]));
+            localStorage.setItem('stock_transactions', JSON.stringify([]));
+            localStorage.setItem('stock_count_records', JSON.stringify([]));
+            if (notify) {
+              showNotification('🧹 ลบข้อมูลตัวอย่างออกจากระบบเรียบร้อย พร้อมใช้งาน');
+            }
+            return;
+          }
+
           setMaterials(mats);
           setRecipes(recs);
           setProductions(prods);
@@ -210,15 +264,15 @@ export default function App() {
             showNotification('🟢 โหลดข้อมูลล่าสุดจากฐานข้อมูลกลางสำเร็จ');
           }
         } else {
-          // If database is brand new and tables are empty, seed initial data
-          await seedInitialDataToSupabase(INITIAL_MATERIALS, INITIAL_RECIPES, INITIAL_DAILY_PRODUCTION, INITIAL_TRANSACTIONS);
-          setMaterials(INITIAL_MATERIALS);
-          setRecipes(INITIAL_RECIPES);
-          setProductions(INITIAL_DAILY_PRODUCTION);
-          setTransactions(INITIAL_TRANSACTIONS);
-          if (notify) {
-            showNotification('✨ เริ่มต้นตารางและบันทึกข้อมูลตั้งต้นลงฐานข้อมูลเรียบร้อย');
-          }
+          // Database tables are empty and clean - keep them empty
+          setMaterials([]);
+          setRecipes([]);
+          setProductions([]);
+          setTransactions([]);
+          localStorage.setItem('stock_materials', JSON.stringify([]));
+          localStorage.setItem('stock_recipes', JSON.stringify([]));
+          localStorage.setItem('stock_productions', JSON.stringify([]));
+          localStorage.setItem('stock_transactions', JSON.stringify([]));
         }
       } else {
         if (notify) {
@@ -366,25 +420,25 @@ export default function App() {
     });
   };
 
-  // Restore sample data handler
+  // Restore sample data handler (optional test data)
   const handleRestoreSampleData = () => {
-    setMaterials(INITIAL_MATERIALS);
-    setRecipes(INITIAL_RECIPES);
-    setProductions(INITIAL_DAILY_PRODUCTION);
-    setTransactions(INITIAL_TRANSACTIONS);
-    localStorage.setItem('stock_materials', JSON.stringify(INITIAL_MATERIALS));
-    localStorage.setItem('stock_recipes', JSON.stringify(INITIAL_RECIPES));
-    localStorage.setItem('stock_productions', JSON.stringify(INITIAL_DAILY_PRODUCTION));
-    localStorage.setItem('stock_transactions', JSON.stringify(INITIAL_TRANSACTIONS));
-    localStorage.setItem('stock_data_initialized', 'true');
-    showNotification('✨ โหลดข้อมูลตัวอย่างเดิมกลับมาเรียบร้อยแล้ว');
+    setMaterials(DEMO_MATERIALS);
+    setRecipes(DEMO_RECIPES);
+    setProductions(DEMO_DAILY_PRODUCTION);
+    setTransactions(DEMO_TRANSACTIONS);
+    localStorage.setItem('stock_materials', JSON.stringify(DEMO_MATERIALS));
+    localStorage.setItem('stock_recipes', JSON.stringify(DEMO_RECIPES));
+    localStorage.setItem('stock_productions', JSON.stringify(DEMO_DAILY_PRODUCTION));
+    localStorage.setItem('stock_transactions', JSON.stringify(DEMO_TRANSACTIONS));
+    localStorage.setItem('stock_sample_cleaned_v2', 'true');
+    showNotification('✨ โหลดชุดข้อมูลตัวอย่างทดสอบเรียบร้อยแล้ว');
     triggerAutoSync({
-      materials: INITIAL_MATERIALS,
-      recipes: INITIAL_RECIPES,
-      productions: INITIAL_DAILY_PRODUCTION,
-      transactions: INITIAL_TRANSACTIONS,
+      materials: DEMO_MATERIALS,
+      recipes: DEMO_RECIPES,
+      productions: DEMO_DAILY_PRODUCTION,
+      transactions: DEMO_TRANSACTIONS,
     });
-    seedInitialDataToSupabase(INITIAL_MATERIALS, INITIAL_RECIPES, INITIAL_DAILY_PRODUCTION, INITIAL_TRANSACTIONS).catch(console.warn);
+    seedInitialDataToSupabase(DEMO_MATERIALS, DEMO_RECIPES, DEMO_DAILY_PRODUCTION, DEMO_TRANSACTIONS).catch(console.warn);
   };
 
   // Import Excel / Sheets Data
