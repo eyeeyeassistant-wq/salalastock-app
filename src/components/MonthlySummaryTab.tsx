@@ -495,7 +495,7 @@ export const MonthlySummaryTab: React.FC<MonthlySummaryTabProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {filteredSummaries.map((item) => {
-                const safetyStock = getSafetyStock(item.RM_Code);
+                const safetyStock = item.Safety_Stock !== undefined ? item.Safety_Stock : getSafetyStock(item.RM_Code);
                 const isOverused = item.Variance > 0.001;
                 const isUnderused = item.Variance < -0.001;
 

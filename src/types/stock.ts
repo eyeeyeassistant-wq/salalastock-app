@@ -72,6 +72,7 @@ export interface MonthlyStockSummary {
   Expected_Usage: number;
   Ending_Stock: number;
   Variance: number;
+  Safety_Stock: number; // จุดเตือนสั่งซื้อขั้นต่ำ (Safety Stock)
   Stock_Status: '⚠️ วัตถุดิบใกล้หมด (ต้องสั่งเพิ่ม)' | 'ปกติ';
   isLowStock: boolean;
   isOverused: boolean;

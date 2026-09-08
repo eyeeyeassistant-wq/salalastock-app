@@ -268,6 +268,7 @@ export function generateMonthlySummary(
       Expected_Usage: Number(expectedUsage.toFixed(3)),
       Ending_Stock: Number(endingStock.toFixed(3)),
       Variance: Number(variance.toFixed(3)),
+      Safety_Stock: Number(safetyStock.toFixed(3)),
       Stock_Status: stockStatus,
       isLowStock,
       isOverused,

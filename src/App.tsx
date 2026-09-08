@@ -793,15 +793,7 @@ export default function App() {
       return;
     }
     const currentSummaries = generateMonthlySummary(materials, recipes, productions, transactions);
-    const lowStockItems = currentSummaries
-      .filter((s) => s.isLowStock)
-      .map((s) => {
-        const mat = materials.find((m) => m.RM_Code === s.RM_Code);
-        return {
-          ...s,
-          Safety_Stock: mat?.Safety_Stock || 0,
-        };
-      });
+    const lowStockItems = currentSummaries.filter((s) => s.isLowStock);
 
     if (lowStockItems.length === 0) {
       showNotification('✅ สต๊อกวัตถุดิบทุกรายการยังอยู่ในเกณฑ์ปลอดภัย ไม่มียอดวิกฤต');

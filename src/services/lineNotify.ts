@@ -44,12 +44,15 @@ export function formatLowStockLineMessage(lowStockItems: MonthlyStockSummary[]):
   ];
 
   lowStockItems.forEach((item, index) => {
-    const deficit = Math.max(0, (item as any).Safety_Stock ? (item as any).Safety_Stock - item.Ending_Stock : 0);
+    const safety = Number(item.Safety_Stock) || 0;
+    const ending = Number(item.Ending_Stock) || 0;
+    const deficit = Math.max(0, safety - ending);
+
     lines.push(
       `${index + 1}. [${item.RM_Code}] ${item.RM_Name}\n` +
-      `   • คงเหลือ: ${item.Ending_Stock.toLocaleString('th-TH', { minimumFractionDigits: 2 })} ${item.Unit}\n` +
-      `   • จุดเตือน: ${((item as any).Safety_Stock || 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} ${item.Unit}` +
-      (deficit > 0 ? ` (ขาดอีก ${deficit.toLocaleString('th-TH', { minimumFractionDigits: 2 })} ${item.Unit})` : '')
+      `   • คงเหลือ: ${ending.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${item.Unit}\n` +
+      `   • จุดเตือน: ${safety.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${item.Unit}` +
+      (deficit > 0 ? ` (ขาดอีก ${deficit.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${item.Unit})` : '')
     );
   });
 
