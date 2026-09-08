@@ -5,6 +5,7 @@ import {
   Plus,
   Search,
   AlertTriangle,
+  AlertCircle,
   CheckCircle2,
   Edit2,
   Save,
@@ -47,6 +48,12 @@ export const MasterMaterialsTab: React.FC<MasterMaterialsTabProps> = ({
       m.RM_Name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const duplicateMaterial = newRMCode.trim()
+    ? materials.find(
+        (m) => m.RM_Code && m.RM_Code.toUpperCase().trim() === newRMCode.toUpperCase().trim()
+      )
+    : null;
+
   const handleSaveNew = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRMCode || !newRMName) return;
@@ -57,19 +64,9 @@ export const MasterMaterialsTab: React.FC<MasterMaterialsTabProps> = ({
     );
 
     if (existing) {
-      onUpdateMaterial({
-        RM_Code: trimmedCode,
-        RM_Name: newRMName.trim(),
-        Unit: newUnit.trim() || 'kg',
-        Opening_Stock: Number(newOpening) || 0,
-        Safety_Stock: Number(newSafety) || 0,
-      });
-      setNewRMCode('');
-      setNewRMName('');
-      setNewOpening(0);
-      setNewSafety(10);
-      setIsAdding(false);
-      setDuplicateWarning(null);
+      setDuplicateWarning(
+        `⚠️ ไม่สามารถบันทึกได้: รหัสวัตถุดิบ "${trimmedCode}" ซ้ำกับ "${existing.RM_Name}" กรุณาระบุรหัสอื่น`
+      );
       return;
     }
 
@@ -159,6 +156,13 @@ export const MasterMaterialsTab: React.FC<MasterMaterialsTabProps> = ({
             </button>
           </div>
 
+          {duplicateWarning && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-2 text-xs text-rose-700 font-medium">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+              <span>{duplicateWarning}</span>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -169,9 +173,24 @@ export const MasterMaterialsTab: React.FC<MasterMaterialsTabProps> = ({
                 required
                 placeholder="เช่น RM009"
                 value={newRMCode}
-                onChange={(e) => setNewRMCode(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono uppercase bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={(e) => {
+                  setNewRMCode(e.target.value);
+                  if (duplicateWarning) setDuplicateWarning(null);
+                }}
+                className={`w-full px-3 py-2 rounded-lg border text-xs font-mono uppercase bg-white focus:outline-none ${
+                  duplicateMaterial
+                    ? 'border-rose-400 bg-rose-50/40 text-rose-900 focus:ring-2 focus:ring-rose-500'
+                    : 'border-slate-200 focus:ring-2 focus:ring-blue-500'
+                }`}
               />
+              {duplicateMaterial && (
+                <p className="mt-1.5 text-[11px] font-semibold text-rose-600 flex items-start gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-rose-600" />
+                  <span>
+                    รหัสซ้ำกับ "{duplicateMaterial.RM_Name}" (ห้ามบันทึกซ้ำ)
+                  </span>
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -232,16 +251,25 @@ export const MasterMaterialsTab: React.FC<MasterMaterialsTabProps> = ({
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
-              onClick={() => setIsAdding(false)}
+              onClick={() => {
+                setIsAdding(false);
+                setDuplicateWarning(null);
+              }}
               className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-200/60 transition-colors"
             >
               ยกเลิก
             </button>
             <button
               type="submit"
-              className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-colors"
+              disabled={!!duplicateMaterial}
+              className={`px-4 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-colors ${
+                duplicateMaterial
+                  ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
+              title={duplicateMaterial ? 'ไม่สามารถบันทึกได้เนื่องจากรหัสวัตถุดิบซ้ำ' : 'บันทึกวัตถุดิบ'}
             >
-              บันทึกวัตถุดิบ
+              {duplicateMaterial ? 'รหัสวัตถุดิบซ้ำ (ห้ามบันทึก)' : 'บันทึกวัตถุดิบ'}
             </button>
           </div>
         </form>

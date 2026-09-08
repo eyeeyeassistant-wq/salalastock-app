@@ -816,17 +816,15 @@ export default function App() {
   const handleAddMaterial = (mat: MasterMaterial) => {
     const code = mat.RM_Code.trim().toUpperCase();
     const sanitizedMat = { ...mat, RM_Code: code };
-    let nextMats: MasterMaterial[];
-    if (materials.some((m) => m.RM_Code.trim().toUpperCase() === code)) {
-      nextMats = materials.map((m) =>
-        m.RM_Code.trim().toUpperCase() === code ? sanitizedMat : m
-      );
-      showNotification(`อัปเดตข้อมูลวัตถุดิบ ${mat.RM_Name} (${code}) เรียบร้อยแล้ว`);
-    } else {
-      nextMats = [...materials, sanitizedMat];
-      showNotification(`เพิ่มวัตถุดิบ ${mat.RM_Name} (${code}) เรียบร้อยแล้ว`);
+
+    const existing = materials.find((m) => m.RM_Code.trim().toUpperCase() === code);
+    if (existing) {
+      showNotification(`⚠️ ไม่สามารถบันทึกได้: รหัสวัตถุดิบ ${code} ซ้ำกับ "${existing.RM_Name}"`);
+      return;
     }
-    nextMats = sanitizeMaterials(nextMats);
+
+    const nextMats = sanitizeMaterials([...materials, sanitizedMat]);
+    showNotification(`เพิ่มวัตถุดิบ ${mat.RM_Name} (${code}) เรียบร้อยแล้ว`);
     setMaterials(nextMats);
     triggerAutoSync({ materials: nextMats });
     upsertMasterMaterial(sanitizedMat).catch(console.warn);
