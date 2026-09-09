@@ -314,7 +314,7 @@ export async function fetchBOMRecipes(): Promise<BOMRecipe[]> {
   const { data, error } = await supabase
     .from('bom_recipe')
     .select('*')
-    .order('product_code', { ascending: true });
+    .order('id', { ascending: true });
 
   if (error) {
     console.error('Error fetching bom_recipe from Supabase:', error);
@@ -323,28 +323,141 @@ export async function fetchBOMRecipes(): Promise<BOMRecipe[]> {
 
   return (data || []).map((row: any) => ({
     id: String(row.id),
-    Product_Code: row.product_code,
-    Product_Name: row.product_name,
-    RM_Code: row.rm_code,
-    Standard_Qty: Number(row.standard_qty) || 0,
+    Product_Code: row.product_code || row.product_name || '',
+    Product_Name: row.product_name || row.product_code || '',
+    RM_Code: (row.rm_code || '').trim().toUpperCase(),
+    Standard_Qty:
+      Number(
+        row.quantity_per_unit !== undefined && row.quantity_per_unit !== null
+          ? row.quantity_per_unit
+          : row.standard_qty
+      ) || 0,
   }));
 }
 
-export async function upsertBOMRecipe(recipe: BOMRecipe): Promise<void> {
+export async function upsertBOMRecipe(recipe: BOMRecipe): Promise<{ id: string | number }> {
   const supabase = getSupabaseClient();
-  const id = recipe.id || `bom_${recipe.Product_Code}_${recipe.RM_Code}_${Date.now()}`;
-  const payload = {
-    id,
-    product_code: recipe.Product_Code.trim().toUpperCase(),
-    product_name: recipe.Product_Name.trim(),
-    rm_code: recipe.RM_Code.trim().toUpperCase(),
-    standard_qty: Number(recipe.Standard_Qty) || 0,
+  const pCode = (recipe.Product_Code || '').trim().toUpperCase();
+  const pName = (recipe.Product_Name || recipe.Product_Code || '').trim();
+  const rmCode = (recipe.RM_Code || '').trim().toUpperCase();
+  const qty = Number(recipe.Standard_Qty) || 0;
+
+  if (!rmCode) {
+    const err = new Error('ไม่พบรหัสวัตถุดิบ (rm_code)');
+    console.error('Validation error: rm_code is required for bom_recipe', err);
+    throw err;
+  }
+
+  // 1. Verify rm_code exists in master_materials (Foreign Key Constraint check)
+  const { data: matCheck, error: matErr } = await supabase
+    .from('master_materials')
+    .select('rm_code')
+    .eq('rm_code', rmCode)
+    .maybeSingle();
+
+  if (matErr) {
+    console.warn('Note: Could not pre-verify master_materials:', matErr.message);
+  } else if (!matCheck) {
+    const fkErr = new Error(
+      `รหัสวัตถุดิบ "${rmCode}" ไม่มีอยู่ในตาราง master_materials กรุณาเลือกจากวัตถุดิบที่มีอยู่ในระบบ`
+    );
+    console.error('Foreign Key Validation Error:', fkErr);
+    throw fkErr;
+  }
+
+  // 2. Check if a record already exists in bom_recipe for this product and raw material
+  let existingId: number | string | null = null;
+
+  if (recipe.id && /^\d+$/.test(String(recipe.id))) {
+    const { data: byId } = await supabase
+      .from('bom_recipe')
+      .select('id')
+      .eq('id', Number(recipe.id))
+      .maybeSingle();
+    if (byId?.id) {
+      existingId = byId.id;
+    }
+  }
+
+  if (!existingId) {
+    let checkQuery = supabase.from('bom_recipe').select('id').eq('rm_code', rmCode);
+    if (pCode) {
+      checkQuery = checkQuery.eq('product_code', pCode);
+    } else {
+      checkQuery = checkQuery.eq('product_name', pName);
+    }
+    const { data: byKey } = await checkQuery.maybeSingle();
+    if (byKey?.id) {
+      existingId = byKey.id;
+    }
+  }
+
+  // 3. Helper to perform insert/update supporting quantity_per_unit or standard_qty
+  const tryWithColumn = async (qtyCol: 'quantity_per_unit' | 'standard_qty'): Promise<number | string> => {
+    const basePayload: Record<string, any> = {
+      product_code: pCode || pName,
+      product_name: pName,
+      rm_code: rmCode,
+      [qtyCol]: qty,
+    };
+
+    if (existingId) {
+      const { data, error } = await supabase
+        .from('bom_recipe')
+        .update(basePayload)
+        .eq('id', existingId)
+        .select('id')
+        .single();
+
+      if (error) throw error;
+      return data?.id || existingId;
+    } else {
+      const { data, error } = await supabase
+        .from('bom_recipe')
+        .insert(basePayload)
+        .select('id')
+        .single();
+
+      if (error) throw error;
+      return data?.id;
+    }
   };
 
-  const { error } = await supabase.from('bom_recipe').upsert(payload, { onConflict: 'id' });
-  if (error) {
-    console.error('Error upserting bom_recipe:', error);
-    throw error;
+  try {
+    let savedId: number | string;
+    try {
+      // First try standard_qty (the existing column in postgres)
+      savedId = await tryWithColumn('standard_qty');
+    } catch (firstErr: any) {
+      // If error indicates standard_qty does not exist or schema uses quantity_per_unit, fallback to quantity_per_unit
+      if (
+        firstErr?.code === 'PGRST204' ||
+        firstErr?.message?.includes('standard_qty') ||
+        firstErr?.message?.includes('column')
+      ) {
+        console.warn('Standard_qty column error, retrying with quantity_per_unit column...', firstErr.message);
+        savedId = await tryWithColumn('quantity_per_unit');
+      } else {
+        throw firstErr;
+      }
+    }
+
+    return { id: savedId };
+  } catch (finalError: any) {
+    console.error('❌ Supabase upsertBOMRecipe Error:', {
+      error: finalError,
+      message: finalError?.message,
+      code: finalError?.code,
+      product_name: pName,
+      rm_code: rmCode,
+      quantity: qty,
+    });
+
+    if (finalError?.code === '23503' || finalError?.message?.includes('foreign key')) {
+      throw new Error(`รหัสวัตถุดิบ "${rmCode}" ไม่พบในตาราง master_materials (Foreign Key Constraint)`);
+    }
+
+    throw finalError;
   }
 }
 
@@ -355,8 +468,18 @@ export async function deleteBOMRecipe(idOrProductCode: string, rmCode?: string):
     query = query
       .eq('product_code', idOrProductCode.trim().toUpperCase())
       .eq('rm_code', rmCode.trim().toUpperCase());
+  } else if (/^\d+$/.test(idOrProductCode)) {
+    query = query.eq('id', Number(idOrProductCode));
   } else {
-    query = query.eq('id', idOrProductCode);
+    // If composite id like 'bom_P001_RM001', parse and delete safely
+    const parts = idOrProductCode.split('_');
+    if (parts.length >= 3 && parts[0] === 'bom') {
+      const p = parts[1];
+      const rm = parts.slice(2).join('_');
+      query = query.eq('product_code', p).eq('rm_code', rm);
+    } else {
+      query = query.eq('product_code', idOrProductCode.trim().toUpperCase());
+    }
   }
   const { error } = await query;
   if (error) {
@@ -372,7 +495,8 @@ export async function clearSupabaseTable(
   if (tableName === 'master_materials') {
     await supabase.from(tableName).delete().neq('rm_code', '___NEVER_MATCH___');
   } else {
-    await supabase.from(tableName).delete().neq('id', '___NEVER_MATCH___');
+    // For tables with bigint id, use gt('id', 0) to avoid syntax error 22P02
+    await supabase.from(tableName).delete().gt('id', 0);
   }
 }
 
@@ -408,29 +532,89 @@ export async function fetchDailyProductions(): Promise<DailyProduction[]> {
 
 export async function saveDailyProduction(prod: DailyProduction): Promise<string> {
   const supabase = getSupabaseClient();
-  const id = prod.id || `prod_${prod.Date}_${prod.Product_Code}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  const payload = {
-    id,
-    date: prod.Date,
-    product_code: prod.Product_Code.trim().toUpperCase(),
-    produced_qty: Number(prod.Produced_Qty) || 0,
-    dispatch_branch_a: Number(prod.Dispatch_Branch_A) || 0,
-    dispatch_branch_b: Number(prod.Dispatch_Branch_B) || 0,
+  const date = prod.Date;
+  const product_code = prod.Product_Code.trim().toUpperCase();
+  const produced_qty = Number(prod.Produced_Qty) || 0;
+  const dispatch_branch_a = Number(prod.Dispatch_Branch_A) || 0;
+  const dispatch_branch_b = Number(prod.Dispatch_Branch_B) || 0;
+
+  const payload: Record<string, any> = {
+    date,
+    product_code,
+    produced_qty,
+    dispatch_branch_a,
+    dispatch_branch_b,
   };
 
-  const { error } = await supabase.from('daily_production').upsert(payload, { onConflict: 'id' });
-  if (error) {
-    console.error('Error saving daily_production:', error);
-    throw error;
+  let numericId: number | null = null;
+  if (prod.id && /^\d+$/.test(String(prod.id))) {
+    numericId = Number(prod.id);
   }
-  return id;
+
+  // If no numeric ID provided, check if an existing record matches date & product_code
+  if (!numericId) {
+    const { data: existing } = await supabase
+      .from('daily_production')
+      .select('id')
+      .eq('date', date)
+      .eq('product_code', product_code)
+      .maybeSingle();
+
+    if (existing?.id) {
+      numericId = Number(existing.id);
+    }
+  }
+
+  if (numericId) {
+    const { data, error } = await supabase
+      .from('daily_production')
+      .update(payload)
+      .eq('id', numericId)
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('Error updating daily_production in Supabase:', error);
+      throw error;
+    }
+    return String(data?.id || numericId);
+  } else {
+    const { data, error } = await supabase
+      .from('daily_production')
+      .insert(payload)
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('Error inserting daily_production in Supabase:', error);
+      throw error;
+    }
+    return String(data?.id);
+  }
 }
 
-export async function deleteDailyProduction(id: string): Promise<void> {
+export async function deleteDailyProduction(idOrDate: string, productCode?: string): Promise<void> {
   const supabase = getSupabaseClient();
-  const { error } = await supabase.from('daily_production').delete().eq('id', id);
+  let query = supabase.from('daily_production').delete();
+
+  if (productCode) {
+    query = query.eq('date', idOrDate).eq('product_code', productCode.trim().toUpperCase());
+  } else if (/^\d+$/.test(idOrDate)) {
+    query = query.eq('id', Number(idOrDate));
+  } else {
+    const parts = idOrDate.split('_');
+    if (parts.length >= 3 && parts[0] === 'prod') {
+      const date = parts[1];
+      const pCode = parts[2];
+      query = query.eq('date', date).eq('product_code', pCode);
+    } else {
+      query = query.eq('id', idOrDate);
+    }
+  }
+
+  const { error } = await query;
   if (error) {
-    console.error('Error deleting daily_production:', error);
+    console.error('Error deleting daily_production from Supabase:', error);
     throw error;
   }
 }
@@ -463,30 +647,80 @@ export async function fetchStockTransactions(): Promise<StockTransaction[]> {
 
 export async function saveStockTransaction(tx: StockTransaction): Promise<string> {
   const supabase = getSupabaseClient();
-  const id = tx.id || `tx_${tx.Date}_${tx.RM_Code}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  const payload = {
-    id,
-    date: tx.Date,
-    type: tx.Type,
-    rm_code: tx.RM_Code.trim().toUpperCase(),
-    qty: Number(tx.Qty) || 0,
-    recorder: tx.Recorder?.trim() || '',
-    note: tx.Note?.trim() || '',
+  const date = tx.Date;
+  // Enforce check constraint: type must be 'Receive' or 'Actual Usage'
+  const type: 'Receive' | 'Actual Usage' = tx.Type === 'Receive' ? 'Receive' : 'Actual Usage';
+  const rm_code = tx.RM_Code.trim().toUpperCase();
+  const qty = Number(tx.Qty) || 0;
+  const recorder = (tx.Recorder || '').trim();
+  const note = (tx.Note || '').trim();
+
+  // Validate Foreign Key against master_materials
+  const { data: matCheck, error: matErr } = await supabase
+    .from('master_materials')
+    .select('rm_code')
+    .eq('rm_code', rm_code)
+    .maybeSingle();
+
+  if (!matCheck && !matErr) {
+    const fkErr = new Error(`รหัสวัตถุดิบ "${rm_code}" ไม่มีอยู่ในตาราง master_materials`);
+    console.error('Foreign Key Validation Error:', fkErr);
+    throw fkErr;
+  }
+
+  const payload: Record<string, any> = {
+    date,
+    type,
+    rm_code,
+    qty,
+    recorder,
+    note,
   };
 
-  const { error } = await supabase.from('stock_transactions').upsert(payload, { onConflict: 'id' });
-  if (error) {
-    console.error('Error saving stock_transactions:', error);
-    throw error;
+  let numericId: number | null = null;
+  if (tx.id && /^\d+$/.test(String(tx.id))) {
+    numericId = Number(tx.id);
   }
-  return id;
+
+  if (numericId) {
+    const { data, error } = await supabase
+      .from('stock_transactions')
+      .update(payload)
+      .eq('id', numericId)
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('Error updating stock_transactions in Supabase:', error);
+      throw error;
+    }
+    return String(data?.id || numericId);
+  } else {
+    const { data, error } = await supabase
+      .from('stock_transactions')
+      .insert(payload)
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('Error inserting stock_transactions in Supabase:', error);
+      throw error;
+    }
+    return String(data?.id);
+  }
 }
 
 export async function deleteStockTransaction(id: string): Promise<void> {
   const supabase = getSupabaseClient();
-  const { error } = await supabase.from('stock_transactions').delete().eq('id', id);
+  let query = supabase.from('stock_transactions').delete();
+  if (/^\d+$/.test(id)) {
+    query = query.eq('id', Number(id));
+  } else {
+    query = query.eq('id', id);
+  }
+  const { error } = await query;
   if (error) {
-    console.error('Error deleting stock_transactions:', error);
+    console.error('Error deleting stock_transactions from Supabase:', error);
     throw error;
   }
 }
@@ -500,7 +734,6 @@ export async function deleteTransactionsForProduction(
   productCode: string
 ): Promise<number> {
   const supabase = getSupabaseClient();
-  // Fetch candidate transactions for the date
   const { data, error } = await supabase
     .from('stock_transactions')
     .select('id, note, recorder, type')
@@ -510,15 +743,15 @@ export async function deleteTransactionsForProduction(
   if (error || !data) return 0;
 
   const pCode = productCode.trim().toUpperCase();
-  const toDeleteIds: string[] = [];
+  const toDeleteIds: number[] = [];
 
   for (const item of data) {
     const isAuto =
       (item.recorder && (item.recorder.toLowerCase().includes('auto') || item.recorder.includes('อัตโนมัติ'))) ||
       (item.note && (item.note.includes('ตัดสต็อก') || item.note.includes(pCode) || (prodId && item.note.includes(prodId))));
 
-    if (isAuto) {
-      toDeleteIds.push(item.id);
+    if (isAuto && item.id) {
+      toDeleteIds.push(Number(item.id));
     }
   }
 
@@ -599,7 +832,7 @@ export async function fetchMonthlyStockCountRecords(): Promise<MonthlyStockCount
 
 /**
  * Reconcile & Close Monthly Stock:
- * 1. Insert records into monthly_stock_counts
+ * 1. Insert records into monthly_stock_counts (excluding id & discrepancy which are generated by PostgreSQL)
  * 2. Update opening_stock in master_materials with actual_count for each RM!
  */
 export async function closeMonthlyStockReconciliation(params: {
@@ -612,18 +845,21 @@ export async function closeMonthlyStockReconciliation(params: {
   const { countDate, recorder, note, items } = params;
 
   // 1. Prepare monthly_stock_counts rows
+  // NOTE: 'id' is a generated bigint identity, and 'discrepancy' is a generated column.
+  // We MUST NOT pass 'id' or 'discrepancy' into the insert payload!
   const countRows = items.map((it) => ({
-    id: `count_${countDate}_${it.RM_Code}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     count_date: countDate,
     rm_code: it.RM_Code.trim().toUpperCase(),
     system_stock: Number(it.System_Qty) || 0,
     actual_count: Number(it.Counted_Qty) || 0,
-    discrepancy: Number(it.Variance) || 0,
     recorder: recorder.trim(),
     note: (note ? note + (it.Note ? ` - ${it.Note}` : '') : it.Note || '').trim(),
   }));
 
   if (countRows.length > 0) {
+    // Delete any previous count rows for this exact count_date to ensure idempotency
+    await supabase.from('monthly_stock_counts').delete().eq('count_date', countDate);
+
     const { error: countErr } = await supabase.from('monthly_stock_counts').insert(countRows);
     if (countErr) {
       console.error('Error inserting monthly_stock_counts:', countErr);
@@ -677,20 +913,14 @@ export async function seedInitialDataToSupabase(
     }
 
     // 2. Insert BOM recipes
-    const recipeRows = recipes.map((r, idx) => ({
-      id: r.id || `bom_${r.Product_Code}_${r.RM_Code}_${idx}`,
-      product_code: r.Product_Code.trim().toUpperCase(),
-      product_name: r.Product_Name.trim(),
-      rm_code: r.RM_Code.trim().toUpperCase(),
-      standard_qty: Number(r.Standard_Qty) || 0,
-    }));
-    if (recipeRows.length > 0) {
-      await supabase.from('bom_recipe').upsert(recipeRows);
+    for (const r of recipes) {
+      await upsertBOMRecipe(r).catch((err) => {
+        console.warn('seed BOM error for', r.Product_Code, r.RM_Code, err);
+      });
     }
 
     // 3. Insert productions
-    const prodRows = productions.map((p, idx) => ({
-      id: p.id || `prod_${p.Date}_${p.Product_Code}_${idx}`,
+    const prodRows = productions.map((p) => ({
       date: p.Date,
       product_code: p.Product_Code.trim().toUpperCase(),
       produced_qty: Number(p.Produced_Qty) || 0,
@@ -698,21 +928,20 @@ export async function seedInitialDataToSupabase(
       dispatch_branch_b: Number(p.Dispatch_Branch_B) || 0,
     }));
     if (prodRows.length > 0) {
-      await supabase.from('daily_production').upsert(prodRows);
+      await supabase.from('daily_production').insert(prodRows);
     }
 
     // 4. Insert transactions
-    const txRows = transactions.map((t, idx) => ({
-      id: t.id || `tx_${t.Date}_${t.RM_Code}_${idx}`,
+    const txRows = transactions.map((t) => ({
       date: t.Date,
-      type: t.Type,
+      type: t.Type === 'Receive' ? 'Receive' : 'Actual Usage',
       rm_code: t.RM_Code.trim().toUpperCase(),
       qty: Number(t.Qty) || 0,
       recorder: t.Recorder || '',
       note: t.Note || '',
     }));
     if (txRows.length > 0) {
-      await supabase.from('stock_transactions').upsert(txRows);
+      await supabase.from('stock_transactions').insert(txRows);
     }
 
     return { seeded: true, message: 'นำเข้าข้อมูลตั้งต้นไปยังฐานข้อมูลสำเร็จเรียบร้อยแล้ว' };

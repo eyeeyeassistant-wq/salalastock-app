@@ -11,6 +11,11 @@ import {
   Table,
   UploadCloud,
   X,
+  Lock,
+  Eye,
+  EyeOff,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   getSupabaseConfig,

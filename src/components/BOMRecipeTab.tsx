@@ -42,12 +42,20 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
   const [newProdCode, setNewProdCode] = useState('');
   const [newProdName, setNewProdName] = useState('');
   const [newRMCode, setNewRMCode] = useState(materials[0]?.RM_Code || '');
-  const [newStandardQty, setNewStandardQty] = useState<number>(0.1);
+  const [newStandardQtyStr, setNewStandardQtyStr] = useState<string>('0.1');
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Searchable Raw Material Dropdown State
   const [isRMDropdownOpen, setIsRMDropdownOpen] = useState(false);
   const [searchRMText, setSearchRMText] = useState('');
   const rmDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Auto-sync newRMCode if materials are loaded asynchronously
+  useEffect(() => {
+    if (!newRMCode && materials.length > 0) {
+      setNewRMCode(materials[0].RM_Code);
+    }
+  }, [materials, newRMCode]);
 
   // Simulation Calculator state
   const [simProduct, setSimProduct] = useState(recipes[0]?.Product_Code || '');
@@ -55,6 +63,22 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
 
   // Grouped products
   const productCodes: string[] = Array.from(new Set(recipes.map((r) => r.Product_Code)));
+
+  // Filtered product codes for display
+  const filteredProductCodes = useMemo(() => {
+    return productCodes.filter((code) => {
+      if (selectedProductFilter !== 'all' && code !== selectedProductFilter) return false;
+      const r = recipes.find((item) => item.Product_Code === code);
+      if (
+        searchTerm &&
+        !code.toLowerCase().includes(searchTerm.toLowerCase()) &&
+        !r?.Product_Name.toLowerCase().includes(searchTerm.toLowerCase())
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [productCodes, recipes, selectedProductFilter, searchTerm]);
 
   // Existing Products List for quick select
   const existingProducts = useMemo(() => {
@@ -96,26 +120,69 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
 
   // Check if ingredient already in this product's BOM
   const isIngredientAlreadyInProduct = useMemo(() => {
-    if (!newProdCode.trim() || !newRMCode.trim()) return false;
+    const p = newProdCode.trim().toUpperCase();
+    const rm = (newRMCode || selectedMaterial?.RM_Code || '').trim().toUpperCase();
+    if (!p || !rm) return false;
     return recipes.some(
       (r) =>
-        r.Product_Code.trim().toUpperCase() === newProdCode.trim().toUpperCase() &&
-        r.RM_Code.trim().toUpperCase() === newRMCode.trim().toUpperCase()
+        r.Product_Code.trim().toUpperCase() === p &&
+        r.RM_Code.trim().toUpperCase() === rm
     );
-  }, [recipes, newProdCode, newRMCode]);
+  }, [recipes, newProdCode, newRMCode, selectedMaterial]);
 
   const handleSaveNew = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newProdCode || !newProdName || !newRMCode || newStandardQty <= 0) return;
+    setFormError(null);
+
+    const cleanProdCode = newProdCode.trim().toUpperCase();
+    const cleanProdName = newProdName.trim();
+    const rmCodeToUse = (newRMCode || selectedMaterial?.RM_Code || materials[0]?.RM_Code || '').trim().toUpperCase();
+    const qty = parseFloat(newStandardQtyStr.replace(',', '.'));
+
+    if (!cleanProdCode) {
+      setFormError('กรุณากรอกรหัสสินค้า (Product_Code)');
+      return;
+    }
+    if (!cleanProdName) {
+      setFormError('กรุณากรอกชื่อสินค้า (Product_Name)');
+      return;
+    }
+    if (!rmCodeToUse) {
+      setFormError('กรุณาเลือกวัตถุดิบ (RM_Code)');
+      return;
+    }
+
+    // Verify that the chosen rm_code exists in master_materials
+    const matchedMat = materials.find(
+      (m) => (m.RM_Code || '').trim().toUpperCase() === rmCodeToUse
+    );
+    if (!matchedMat) {
+      setFormError(
+        `รหัสวัตถุดิบ "${rmCodeToUse}" ไม่มีอยู่ในตารางวัตถุดิบหลัก (master_materials) กรุณาเลือกจากรายการวัตถุดิบที่มีอยู่`
+      );
+      return;
+    }
+
+    if (isNaN(qty) || qty <= 0) {
+      setFormError('กรุณากรอกปริมาณต่อชิ้นที่มากกว่า 0 (เช่น 0.25 หรือ 1)');
+      return;
+    }
+
+    const verifiedRMCode = matchedMat.RM_Code.trim().toUpperCase();
 
     onAddRecipe({
-      Product_Code: newProdCode.toUpperCase().trim(),
-      Product_Name: newProdName.trim(),
-      RM_Code: newRMCode,
-      Standard_Qty: Number(newStandardQty),
+      id: `bom_${cleanProdCode}_${verifiedRMCode}`,
+      Product_Code: cleanProdCode,
+      Product_Name: cleanProdName,
+      RM_Code: verifiedRMCode,
+      Standard_Qty: qty,
     });
 
-    setNewStandardQty(0.1);
+    // Reset filters to ensure the saved product card is visible immediately
+    setSelectedProductFilter('all');
+    setSearchTerm('');
+
+    setNewStandardQtyStr('0.1');
     setIsAdding(false);
     setIsRMDropdownOpen(false);
     setSearchRMText('');
@@ -309,6 +376,16 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
                       placeholder="พิมพ์ค้นหารหัส หรือ ชื่อวัตถุดิบ..."
                       value={searchRMText}
                       onChange={(e) => setSearchRMText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (filteredMaterials.length > 0) {
+                            setNewRMCode(filteredMaterials[0].RM_Code);
+                            setIsRMDropdownOpen(false);
+                            setSearchRMText('');
+                          }
+                        }
+                      }}
                       className="w-full pl-8 pr-7 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     {searchRMText && (
@@ -391,18 +468,27 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
                 )}
               </label>
               <input
-                type="number"
-                step="any"
+                type="text"
                 inputMode="decimal"
                 required
-                placeholder="0.25"
-                value={newStandardQty}
+                placeholder="เช่น 0.25 หรือ 1"
+                value={newStandardQtyStr}
                 onFocus={(e) => e.target.select()}
-                onChange={(e) => setNewStandardQty(parseFloat(e.target.value) || 0)}
+                onChange={(e) => {
+                  setNewStandardQtyStr(e.target.value);
+                  setFormError(null);
+                }}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs bg-white font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
+
+          {formError && (
+            <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center gap-2 animate-in fade-in duration-150">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+              <span>{formError}</span>
+            </div>
+          )}
 
           {isIngredientAlreadyInProduct && (
             <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-center gap-2">
@@ -433,20 +519,18 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
 
       {/* Grouped Product BOM Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {productCodes
-          .filter((code) => {
-            if (selectedProductFilter !== 'all' && code !== selectedProductFilter) return false;
-            const r = recipes.find((item) => item.Product_Code === code);
-            if (
-              searchTerm &&
-              !code.toLowerCase().includes(searchTerm.toLowerCase()) &&
-              !r?.Product_Name.toLowerCase().includes(searchTerm.toLowerCase())
-            ) {
-              return false;
-            }
-            return true;
-          })
-          .map((code) => {
+        {filteredProductCodes.length === 0 ? (
+          <div className="bg-white rounded-xl border border-slate-200 p-8 text-center col-span-full">
+            <Layers className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+            <p className="text-sm font-semibold text-slate-700">ไม่พบสูตรสินค้าที่ตรงกับเงื่อนไข</p>
+            <p className="text-xs text-slate-400 mt-1">
+              {searchTerm || selectedProductFilter !== 'all'
+                ? 'ลองเปลี่ยนคำค้นหา หรือรีเซ็ตตัวกรองด้านบน'
+                : 'ยังไม่มีสูตรมาตรฐานในระบบ คลิกปุ่ม "+ เพิ่มสูตรมาตรฐาน" เพื่อเริ่มเพิ่มสูตรแรก'}
+            </p>
+          </div>
+        ) : (
+          filteredProductCodes.map((code) => {
             const productItems = recipes.filter((r) => r.Product_Code === code);
             const productName = productItems[0]?.Product_Name || code;
 
@@ -541,7 +625,8 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
                 </div>
               </div>
             );
-          })}
+          })
+        )}
       </div>
 
       {/* Interactive Batch Simulation Calculator */}

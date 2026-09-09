@@ -204,75 +204,123 @@ export default function App() {
 
       if (connRes.success) {
         const [mats, recs, prods, txs, counts] = await Promise.all([
-          fetchMasterMaterials(),
-          fetchBOMRecipes(),
-          fetchDailyProductions(),
-          fetchStockTransactions(),
-          fetchMonthlyStockCountRecords(),
+          fetchMasterMaterials().catch(() => [] as MasterMaterial[]),
+          fetchBOMRecipes().catch(() => [] as BOMRecipe[]),
+          fetchDailyProductions().catch(() => [] as DailyProduction[]),
+          fetchStockTransactions().catch(() => [] as StockTransaction[]),
+          fetchMonthlyStockCountRecords().catch(() => [] as MonthlyStockCountRecord[]),
         ]);
 
-        if (mats.length > 0 || recs.length > 0 || prods.length > 0 || txs.length > 0) {
-          // Check if existing data is the default bakery sample dataset
-          const isOldSampleData =
-            mats &&
-            mats.length <= 8 &&
-            mats.some(
-              (m) =>
-                m.RM_Code === 'RM001' &&
-                (m.RM_Name.includes('แป้งสาลี') || m.RM_Name.includes('Flour'))
-            );
+        // Safely retrieve current local storage fallback data
+        let localMats: MasterMaterial[] = [];
+        try {
+          const s = localStorage.getItem('stock_materials');
+          if (s) localMats = sanitizeMaterials(JSON.parse(s));
+        } catch (_) {}
 
-          const dbSamplePurged = localStorage.getItem('stock_cloud_sample_purged_v2');
+        let localRecs: BOMRecipe[] = [];
+        try {
+          const s = localStorage.getItem('stock_recipes');
+          if (s) localRecs = sanitizeRecipes(JSON.parse(s));
+        } catch (_) {}
 
-          if (isOldSampleData && !dbSamplePurged) {
-            // Purge sample data from cloud database as requested
-            await Promise.allSettled([
-              clearSupabaseTable('stock_transactions'),
-              clearSupabaseTable('daily_production'),
-              clearSupabaseTable('bom_recipe'),
-              clearSupabaseTable('master_materials'),
-              clearSupabaseTable('monthly_stock_counts'),
-            ]);
-            localStorage.setItem('stock_cloud_sample_purged_v2', 'true');
-            setMaterials([]);
-            setRecipes([]);
-            setProductions([]);
-            setTransactions([]);
-            setStockCountRecords([]);
-            localStorage.setItem('stock_materials', JSON.stringify([]));
-            localStorage.setItem('stock_recipes', JSON.stringify([]));
-            localStorage.setItem('stock_productions', JSON.stringify([]));
-            localStorage.setItem('stock_transactions', JSON.stringify([]));
-            localStorage.setItem('stock_count_records', JSON.stringify([]));
-            if (notify) {
-              showNotification('🧹 ลบข้อมูลตัวอย่างออกจากระบบเรียบร้อย พร้อมใช้งาน');
-            }
-            return;
+        let localProds: DailyProduction[] = [];
+        try {
+          const s = localStorage.getItem('stock_productions');
+          if (s) localProds = sanitizeProductions(JSON.parse(s));
+        } catch (_) {}
+
+        let localTxs: StockTransaction[] = [];
+        try {
+          const s = localStorage.getItem('stock_transactions');
+          if (s) localTxs = sanitizeTransactions(JSON.parse(s));
+        } catch (_) {}
+
+        let localCounts: MonthlyStockCountRecord[] = [];
+        try {
+          const s = localStorage.getItem('stock_count_records');
+          if (s) localCounts = JSON.parse(s);
+        } catch (_) {}
+
+        // 1. Merge Materials (remote first, preserve local if remote is empty or missing items)
+        const matsMap = new Map<string, MasterMaterial>();
+        (mats || []).forEach((m) => {
+          if (m.RM_Code) matsMap.set(m.RM_Code.trim().toUpperCase(), m);
+        });
+        (localMats || []).forEach((m) => {
+          const code = (m.RM_Code || '').trim().toUpperCase();
+          if (code && !matsMap.has(code)) {
+            matsMap.set(code, m);
+            upsertMasterMaterial(m).catch(console.warn);
           }
+        });
+        const finalMats = sanitizeMaterials(Array.from(matsMap.values()));
 
-          setMaterials(mats);
-          setRecipes(recs);
-          setProductions(prods);
-          setTransactions(txs);
-          setStockCountRecords(counts);
-          localStorage.setItem('stock_materials', JSON.stringify(mats));
-          localStorage.setItem('stock_recipes', JSON.stringify(recs));
-          localStorage.setItem('stock_productions', JSON.stringify(prods));
-          localStorage.setItem('stock_transactions', JSON.stringify(txs));
-          localStorage.setItem('stock_count_records', JSON.stringify(counts));
-          if (notify) {
-            showNotification('🟢 โหลดข้อมูลล่าสุดจากฐานข้อมูลกลางสำเร็จ');
+        // 2. Merge BOM Recipes (remote first, preserve local if remote is empty or missing items)
+        const recsMap = new Map<string, BOMRecipe>();
+        (recs || []).forEach((r) => {
+          const p = (r.Product_Code || '').trim().toUpperCase();
+          const rm = (r.RM_Code || '').trim().toUpperCase();
+          if (p && rm) recsMap.set(`${p}___${rm}`, r);
+        });
+        (localRecs || []).forEach((r) => {
+          const p = (r.Product_Code || '').trim().toUpperCase();
+          const rm = (r.RM_Code || '').trim().toUpperCase();
+          const key = `${p}___${rm}`;
+          if (p && rm && !recsMap.has(key)) {
+            recsMap.set(key, r);
+            upsertBOMRecipe(r).catch(console.warn);
           }
-        } else {
-          // Database tables are empty and clean - keep them empty
-          setMaterials([]);
-          setRecipes([]);
-          setProductions([]);
-          setTransactions([]);
-          localStorage.setItem('stock_materials', JSON.stringify([]));
-          localStorage.setItem('stock_recipes', JSON.stringify([]));
-          localStorage.setItem('stock_productions', JSON.stringify([]));
-          localStorage.setItem('stock_transactions', JSON.stringify([]));
+        });
+        const finalRecs = sanitizeRecipes(Array.from(recsMap.values()));
+
+        // 3. Merge Daily Productions
+        const prodsMap = new Map<string, DailyProduction>();
+        (prods || []).forEach((p) => {
+          const key = p.id || `${p.Date}_${p.Product_Code}`;
+          prodsMap.set(key, p);
+        });
+        (localProds || []).forEach((p) => {
+          const key = p.id || `${p.Date}_${p.Product_Code}`;
+          if (!prodsMap.has(key)) {
+            prodsMap.set(key, p);
+            saveDailyProduction(p).catch(console.warn);
+          }
+        });
+        const finalProds = sanitizeProductions(Array.from(prodsMap.values()));
+
+        // 4. Merge Stock Transactions
+        const txsMap = new Map<string, StockTransaction>();
+        (txs || []).forEach((t) => {
+          if (t.id) txsMap.set(t.id, t);
+        });
+        (localTxs || []).forEach((t) => {
+          if (t.id && !txsMap.has(t.id)) {
+            txsMap.set(t.id, t);
+            saveStockTransaction(t).catch(console.warn);
+          }
+        });
+        const finalTxs = sanitizeTransactions(
+          Array.from(txsMap.values()).length > 0 ? Array.from(txsMap.values()) : (localTxs.length > 0 ? localTxs : txs)
+        );
+
+        // 5. Merge Monthly Stock Counts
+        const finalCounts = counts && counts.length > 0 ? counts : localCounts;
+
+        setMaterials(finalMats);
+        setRecipes(finalRecs);
+        setProductions(finalProds);
+        setTransactions(finalTxs);
+        setStockCountRecords(finalCounts);
+
+        localStorage.setItem('stock_materials', JSON.stringify(finalMats));
+        localStorage.setItem('stock_recipes', JSON.stringify(finalRecs));
+        localStorage.setItem('stock_productions', JSON.stringify(finalProds));
+        localStorage.setItem('stock_transactions', JSON.stringify(finalTxs));
+        localStorage.setItem('stock_count_records', JSON.stringify(finalCounts));
+
+        if (notify) {
+          showNotification('🟢 โหลดและซิงค์ข้อมูลกับฐานข้อมูลกลางสำเร็จ');
         }
       } else {
         if (notify) {
@@ -360,7 +408,7 @@ export default function App() {
 
     triggerAutoSync({ stockCountRecords: nextStockCounts, materials: nextMats });
 
-    // Save to Supabase (PostgreSQL)
+    // Save to Database (PostgreSQL)
     try {
       await closeMonthlyStockReconciliation({
         countDate: record.Count_Date || `${record.Month}-01`,
@@ -368,8 +416,10 @@ export default function App() {
         note: record.Note,
         items: record.Items,
       });
+      showNotification(`🟢 บันทึกผลตรวจนับประจำเดือน ${record.Month} ลงฐานข้อมูลกลางเรียบร้อยแล้ว`);
     } catch (e: any) {
-      console.warn('Supabase stock count save notice:', e);
+      console.error('Database stock count save error:', e);
+      showNotification(`⚠️ บันทึกผลตรวจนับลงฐานข้อมูลกลางไม่สำเร็จ: ${e.message || 'โปรดตรวจสอบการเชื่อมต่อ'}`);
     }
   };
 
@@ -509,7 +559,10 @@ export default function App() {
     localStorage.setItem('stock_recipes', JSON.stringify(nextRecipes));
     showNotification(`🗑️ ลบส่วนผสม ${rCode} ออกจากสูตร ${pCode} เรียบร้อยแล้ว`);
     triggerAutoSync({ recipes: nextRecipes });
-    deleteBOMRecipe(pCode, rCode).catch(console.warn);
+    deleteBOMRecipe(pCode, rCode).catch((err) => {
+      console.error('❌ ไม่สามารถลบสูตร BOM ออกจากระบบ:', err);
+      showNotification(`⚠️ ลบออกจากฐานข้อมูลกลางไม่สำเร็จ: ${err.message || ''}`);
+    });
   };
 
   const handleDeleteProduction = (
@@ -600,9 +653,12 @@ export default function App() {
       });
     }
 
-    // Delete production row in Supabase
+    // Delete production row in Database
     if (targetProd?.id) {
-      deleteDailyProduction(targetProd.id).catch(console.warn);
+      deleteDailyProduction(targetProd.id).catch((err) => {
+        console.error('❌ ไม่สามารถลบยอดผลิตออกจากระบบ:', err);
+        showNotification(`⚠️ ลบยอดผลิตออกจากฐานข้อมูลกลางไม่สำเร็จ: ${err.message || ''}`);
+      });
     }
 
     // Update state and persistence immediately
@@ -654,7 +710,10 @@ export default function App() {
     }
 
     if (targetIdToDelete) {
-      deleteStockTransaction(targetIdToDelete).catch(console.warn);
+      deleteStockTransaction(targetIdToDelete).catch((err) => {
+        console.error('❌ ไม่สามารถลบรายการสต็อกออกจากระบบ:', err);
+        showNotification(`⚠️ ลบรายการออกจากฐานข้อมูลกลางไม่สำเร็จ: ${err.message || ''}`);
+      });
     }
 
     setTransactions(nextTxs);
@@ -844,10 +903,16 @@ export default function App() {
   };
 
   // 3. Add Recipe Item
-  const handleAddRecipe = (recipe: BOMRecipe) => {
+  const handleAddRecipe = async (recipe: BOMRecipe) => {
     const pCode = recipe.Product_Code.trim().toUpperCase();
     const rmCode = recipe.RM_Code.trim().toUpperCase();
-    const sanitizedRecipe = { ...recipe, Product_Code: pCode, RM_Code: rmCode };
+    const sanitizedRecipe: BOMRecipe = {
+      ...recipe,
+      id: recipe.id || `bom_${pCode}_${rmCode}`,
+      Product_Code: pCode,
+      RM_Code: rmCode,
+      Standard_Qty: Number(recipe.Standard_Qty) || 0,
+    };
     let nextRecipes: BOMRecipe[];
     const exists = recipes.some(
       (r) => r.Product_Code.trim().toUpperCase() === pCode && r.RM_Code.trim().toUpperCase() === rmCode
@@ -863,14 +928,32 @@ export default function App() {
     }
     nextRecipes = sanitizeRecipes(nextRecipes);
     setRecipes(nextRecipes);
-    showNotification(`บันทึกสูตร ${recipe.Product_Code} (${recipe.RM_Code}) เรียบร้อย`);
+    localStorage.setItem('stock_recipes', JSON.stringify(nextRecipes));
     triggerAutoSync({ recipes: nextRecipes });
-    upsertBOMRecipe(sanitizedRecipe).catch(console.warn);
+
+    // Sync to Supabase with full error reporting and user feedback
+    try {
+      const saveResult = await upsertBOMRecipe(sanitizedRecipe);
+      if (saveResult?.id) {
+        const withRealId = nextRecipes.map((r) =>
+          r.Product_Code.trim().toUpperCase() === pCode && r.RM_Code.trim().toUpperCase() === rmCode
+            ? { ...r, id: String(saveResult.id) }
+            : r
+        );
+        setRecipes(withRealId);
+        localStorage.setItem('stock_recipes', JSON.stringify(withRealId));
+      }
+      showNotification(`🟢 บันทึกสูตร ${recipe.Product_Code} (${recipe.RM_Code}) ลงฐานข้อมูลกลางเรียบร้อยแล้ว`);
+    } catch (err: any) {
+      console.error('❌ ไม่สามารถบันทึกสูตร BOM ลงระบบ:', err);
+      const errMsg = err?.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล';
+      showNotification(`❌ บันทึกสูตรลงฐานข้อมูลกลางไม่สำเร็จ: ${errMsg}`);
+    }
   };
 
   // 4. Save/Edit Transaction
   const handleSaveTransaction = async (tx: StockTransaction) => {
-    const fullTx: StockTransaction = {
+    let fullTx: StockTransaction = {
       ...tx,
       id: tx.id || `tx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     };
@@ -896,7 +979,21 @@ export default function App() {
     setTransactions(nextTxs);
     localStorage.setItem('stock_transactions', JSON.stringify(nextTxs));
     triggerAutoSync({ transactions: nextTxs });
-    saveStockTransaction(fullTx).catch(console.warn);
+
+    // Save to Database
+    try {
+      const savedId = await saveStockTransaction(fullTx);
+      if (savedId) {
+        fullTx = { ...fullTx, id: savedId };
+        setTransactions((prev) =>
+          prev.map((t) => (t === fullTx || (t.id && t.id === fullTx.id) ? { ...t, id: savedId } : t))
+        );
+      }
+      showNotification(`🟢 บันทึก ${fullTx.Type} (${fullTx.RM_Code} จำนวน ${fullTx.Qty}) ลงฐานข้อมูลกลางสำเร็จ`);
+    } catch (err: any) {
+      console.error('❌ ไม่สามารถบันทึกรายการสต็อกลงระบบ:', err);
+      showNotification(`⚠️ บันทึกลงฐานข้อมูลกลางไม่สำเร็จ: ${err.message || 'โปรดตรวจสอบการเชื่อมต่อ'}`);
+    }
   };
 
   const handleEditTransaction = (tx: StockTransaction, index: number) => {
@@ -907,7 +1004,7 @@ export default function App() {
 
   // 5. Save/Edit Daily Production (with optional Auto-Deduct & Auto-Update on Edit)
   const handleSaveProduction = async (prod: DailyProduction, autoDeduct: boolean) => {
-    const fullProd = calculateProductionRowTotals(prod);
+    let fullProd = calculateProductionRowTotals(prod);
     if (!fullProd.id) {
       fullProd.id = `prod_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     }
@@ -948,7 +1045,6 @@ export default function App() {
         });
 
         const newAutoTxs: StockTransaction[] = productRecipes.map((r) => ({
-          id: `tx_auto_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           productionId: fullProd.id,
           Date: fullProd.Date,
           Type: 'Actual Usage',
@@ -961,7 +1057,9 @@ export default function App() {
         nextTxs = [...newAutoTxs, ...filteredTxs];
         setTransactions(nextTxs);
         localStorage.setItem('stock_transactions', JSON.stringify(nextTxs));
-        newAutoTxs.forEach((atx) => saveStockTransaction(atx).catch(console.warn));
+        for (const atx of newAutoTxs) {
+          saveStockTransaction(atx).catch((err) => console.error('Auto deduct Supabase save error:', err));
+        }
         showNotification(
           `✅ แก้ไขยอดผลิต ${fullProd.Product_Code} (${fullProd.Produced_Qty} ชิ้น) และปรับยอดตัดสต็อกวัตถุดิบ ${newAutoTxs.length} รายการให้อัตโนมัติ!`
         );
@@ -973,7 +1071,6 @@ export default function App() {
 
       if (autoDeduct) {
         const newAutoTxs: StockTransaction[] = productRecipes.map((r) => ({
-          id: `tx_auto_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           productionId: fullProd.id,
           Date: fullProd.Date,
           Type: 'Actual Usage',
@@ -987,7 +1084,9 @@ export default function App() {
           nextTxs = [...newAutoTxs, ...nextTxs];
           setTransactions(nextTxs);
           localStorage.setItem('stock_transactions', JSON.stringify(nextTxs));
-          newAutoTxs.forEach((atx) => saveStockTransaction(atx).catch(console.warn));
+          for (const atx of newAutoTxs) {
+            saveStockTransaction(atx).catch((err) => console.error('Auto deduct Supabase save error:', err));
+          }
         }
         showNotification(
           `✅ บันทึกยอดผลิต ${fullProd.Product_Code} (${fullProd.Produced_Qty} ชิ้น) และตัดสต็อกวัตถุดิบ ${newAutoTxs.length} รายการอัตโนมัติ!`
@@ -1000,7 +1099,23 @@ export default function App() {
     setProductions(nextProds);
     localStorage.setItem('stock_productions', JSON.stringify(nextProds));
     triggerAutoSync({ productions: nextProds, transactions: nextTxs });
-    saveDailyProduction(fullProd).catch(console.warn);
+
+    // Save production to Database
+    try {
+      const savedProdId = await saveDailyProduction(fullProd);
+      if (savedProdId) {
+        fullProd = { ...fullProd, id: savedProdId };
+        setProductions((prev) =>
+          prev.map((p) => (p === fullProd || (p.id && p.id === fullProd.id) ? { ...p, id: savedProdId } : p))
+        );
+      }
+      showNotification(
+        `🟢 บันทึกยอดผลิต ${fullProd.Product_Code} (${fullProd.Produced_Qty} ชิ้น) ลงฐานข้อมูลกลางสำเร็จ`
+      );
+    } catch (err: any) {
+      console.error('❌ ไม่สามารถบันทึกยอดผลิตลงระบบ:', err);
+      showNotification(`⚠️ บันทึกยอดผลิตลงฐานข้อมูลกลางไม่สำเร็จ: ${err.message || 'โปรดตรวจสอบการเชื่อมต่อ'}`);
+    }
   };
 
   const handleEditProduction = (prod: DailyProduction, index: number) => {
@@ -1031,7 +1146,6 @@ export default function App() {
     });
 
     const newAutoTxs: StockTransaction[] = productRecipes.map((r) => ({
-      id: `tx_auto_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       productionId: prod.id,
       Date: prod.Date,
       Type: 'Actual Usage',
@@ -1043,7 +1157,10 @@ export default function App() {
 
     const nextTxs = [...newAutoTxs, ...filteredTxs];
     setTransactions(nextTxs);
-    newAutoTxs.forEach((atx) => saveStockTransaction(atx).catch(console.warn));
+    localStorage.setItem('stock_transactions', JSON.stringify(nextTxs));
+    for (const atx of newAutoTxs) {
+      saveStockTransaction(atx).catch((err) => console.error('Auto deduct Supabase save error:', err));
+    }
     showNotification(`⚡ ตัดสต็อกวัตถุดิบ ${newAutoTxs.length} รายการตามสูตร BOM x ยอดผลิต ${prod.Produced_Qty} ชิ้น เรียบร้อยแล้ว!`);
     triggerAutoSync({ transactions: nextTxs });
   };

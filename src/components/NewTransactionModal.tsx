@@ -157,6 +157,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
     }
 
     onSave({
+      id: initialData?.id,
       Date: date,
       Type: type,
       RM_Code: rmCode,

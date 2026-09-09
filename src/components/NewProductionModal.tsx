@@ -93,6 +93,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
 
     onSave(
       {
+        id: initialData?.id,
         Date: date,
         Product_Code: productCode,
         Produced_Qty: numProduced,
