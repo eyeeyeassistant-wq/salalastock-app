@@ -11,12 +11,14 @@ import {
   StockTransaction,
   TransactionType,
   MonthlyStockCountRecord,
+  MasterBranch,
 } from './types/stock';
 import {
   INITIAL_MATERIALS,
   INITIAL_RECIPES,
   INITIAL_DAILY_PRODUCTION,
   INITIAL_TRANSACTIONS,
+  INITIAL_BRANCHES,
   DEMO_MATERIALS,
   DEMO_RECIPES,
   DEMO_DAILY_PRODUCTION,
@@ -56,6 +58,9 @@ import {
   closeMonthlyStockReconciliation,
   seedInitialDataToSupabase,
   clearSupabaseTable,
+  fetchMasterBranches,
+  saveMasterBranch,
+  deleteMasterBranch,
 } from './services/supabase';
 import {
   getLineNotifyToken,
@@ -71,6 +76,7 @@ import { DailyProductionTab } from './components/DailyProductionTab';
 import { StockTransactionsTab } from './components/StockTransactionsTab';
 import { MasterMaterialsTab } from './components/MasterMaterialsTab';
 import { BOMRecipeTab } from './components/BOMRecipeTab';
+import { MasterBranchesTab } from './components/MasterBranchesTab';
 import { FormulaGuideModal } from './components/FormulaGuideModal';
 import { SupabaseSyncModal } from './components/SupabaseSyncModal';
 import { LineNotifyModal } from './components/LineNotifyModal';
@@ -181,6 +187,21 @@ export default function App() {
     return [];
   });
 
+  const [branches, setBranches] = useState<MasterBranch[]>(() => {
+    const saved = localStorage.getItem('stock_branches');
+    if (saved !== null) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch (e) {
+        console.warn('Failed parsing local stock_branches:', e);
+      }
+    }
+    return INITIAL_BRANCHES;
+  });
+
   // Supabase Database Connection & Status
   const [isSupabaseConnected, setIsSupabaseConnected] = useState<boolean>(false);
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
@@ -203,12 +224,13 @@ export default function App() {
       setIsSupabaseConnected(connRes.success);
 
       if (connRes.success) {
-        const [mats, recs, prods, txs, counts] = await Promise.all([
+        const [mats, recs, prods, txs, counts, branchList] = await Promise.all([
           fetchMasterMaterials().catch(() => [] as MasterMaterial[]),
           fetchBOMRecipes().catch(() => [] as BOMRecipe[]),
           fetchDailyProductions().catch(() => [] as DailyProduction[]),
           fetchStockTransactions().catch(() => [] as StockTransaction[]),
           fetchMonthlyStockCountRecords().catch(() => [] as MonthlyStockCountRecord[]),
+          fetchMasterBranches().catch(() => [] as MasterBranch[]),
         ]);
 
         // Safely retrieve current local storage fallback data
@@ -307,17 +329,40 @@ export default function App() {
         // 5. Merge Monthly Stock Counts
         const finalCounts = counts && counts.length > 0 ? counts : localCounts;
 
+        // 6. Merge Branches
+        let localBranches: MasterBranch[] = [];
+        try {
+          const s = localStorage.getItem('stock_branches');
+          if (s) localBranches = JSON.parse(s);
+        } catch (_) {}
+        if (localBranches.length === 0) localBranches = INITIAL_BRANCHES;
+
+        const branchMap = new Map<string, MasterBranch>();
+        (branchList || []).forEach((b) => {
+          if (b.branch_code) branchMap.set(b.branch_code.trim().toUpperCase(), b);
+        });
+        localBranches.forEach((b) => {
+          const code = (b.branch_code || '').trim().toUpperCase();
+          if (code && !branchMap.has(code)) {
+            branchMap.set(code, b);
+            saveMasterBranch(b).catch(console.warn);
+          }
+        });
+        const finalBranches = Array.from(branchMap.values());
+
         setMaterials(finalMats);
         setRecipes(finalRecs);
         setProductions(finalProds);
         setTransactions(finalTxs);
         setStockCountRecords(finalCounts);
+        setBranches(finalBranches);
 
         localStorage.setItem('stock_materials', JSON.stringify(finalMats));
         localStorage.setItem('stock_recipes', JSON.stringify(finalRecs));
         localStorage.setItem('stock_productions', JSON.stringify(finalProds));
         localStorage.setItem('stock_transactions', JSON.stringify(finalTxs));
         localStorage.setItem('stock_count_records', JSON.stringify(finalCounts));
+        localStorage.setItem('stock_branches', JSON.stringify(finalBranches));
 
         if (notify) {
           showNotification('🟢 โหลดและซิงค์ข้อมูลกับฐานข้อมูลกลางสำเร็จ');
@@ -1165,6 +1210,66 @@ export default function App() {
     triggerAutoSync({ transactions: nextTxs });
   };
 
+  // 7. Branch Management CRUD
+  const handleSaveBranch = async (branch: MasterBranch) => {
+    const cleanCode = (branch.branch_code || '').trim().toUpperCase();
+    const cleanName = (branch.branch_name || '').trim();
+    const updatedBranch: MasterBranch = {
+      ...branch,
+      branch_code: cleanCode,
+      branch_name: cleanName,
+    };
+
+    let nextBranches: MasterBranch[] = [];
+    setBranches((prev) => {
+      const idx = prev.findIndex(
+        (b) => b.branch_code.toUpperCase() === cleanCode || (b.id && branch.id && b.id === branch.id)
+      );
+      if (idx >= 0) {
+        nextBranches = [...prev];
+        nextBranches[idx] = { ...nextBranches[idx], ...updatedBranch };
+      } else {
+        nextBranches = [...prev, updatedBranch];
+      }
+      localStorage.setItem('stock_branches', JSON.stringify(nextBranches));
+      return nextBranches;
+    });
+
+    if (isSupabaseConnected) {
+      try {
+        await saveMasterBranch(updatedBranch);
+        showNotification(`🟢 บันทึกสาขา ${cleanName} (${cleanCode}) ลงฐานข้อมูลกลางสำเร็จ`);
+      } catch (err: any) {
+        console.warn('Save branch to Supabase:', err);
+        showNotification(`⚠️ บันทึกสาขาในเครื่องแล้ว (ฐานข้อมูล: ${err?.message || 'รอรัน SQL Schema master_branches'})`);
+      }
+    } else {
+      showNotification(`✅ บันทึกสาขา ${cleanName} เรียบร้อยแล้ว`);
+    }
+  };
+
+  const handleDeleteBranch = async (branchCode: string) => {
+    const cleanCode = branchCode.trim().toUpperCase();
+    let nextBranches: MasterBranch[] = [];
+    setBranches((prev) => {
+      nextBranches = prev.filter((b) => b.branch_code.toUpperCase() !== cleanCode);
+      localStorage.setItem('stock_branches', JSON.stringify(nextBranches));
+      return nextBranches;
+    });
+
+    if (isSupabaseConnected) {
+      try {
+        await deleteMasterBranch(cleanCode);
+        showNotification(`🗑️ ลบสาขา ${cleanCode} จากฐานข้อมูลกลางเรียบร้อย`);
+      } catch (err: any) {
+        console.warn('Delete branch from Supabase:', err);
+        showNotification(`ลบสาขา ${cleanCode} จากระบบเรียบร้อย`);
+      }
+    } else {
+      showNotification(`ลบสาขา ${cleanCode} เรียบร้อย`);
+    }
+  };
+
   // Calculate live summaries
   const summaries = generateMonthlySummary(materials, recipes, productions, transactions);
   const lowStockCount = summaries.filter((s) => s.isLowStock).length;
@@ -1232,6 +1337,7 @@ export default function App() {
             recipes={recipes}
             productions={productions}
             transactions={transactions}
+            branches={branches}
             isSupabaseConnected={isSupabaseConnected}
             onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
             onOpenLineNotifyModal={() => setIsLineNotifyModalOpen(true)}
@@ -1274,6 +1380,8 @@ export default function App() {
             recipes={recipes}
             materials={materials}
             transactions={transactions}
+            branches={branches}
+            onManageBranches={() => setActiveTab('branches')}
             onAddProduction={(p) => handleSaveProduction(p, false)}
             onAutoDeductBatch={handleAutoDeductBatch}
             onOpenNewProdModal={() => {
@@ -1362,6 +1470,36 @@ export default function App() {
           )
         )}
 
+        {activeTab === 'branches' && (
+          userRole === 'admin' ? (
+            <MasterBranchesTab
+              branches={branches}
+              productions={productions}
+              onSaveBranch={handleSaveBranch}
+              onDeleteBranch={handleDeleteBranch}
+            />
+          ) : (
+            <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm text-center max-w-md mx-auto my-12">
+              <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto mb-4">
+                <Shield className="w-7 h-7" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800 mb-1">
+                ข้อมูลสาขาและจุดกระจายสินค้า (Master Branches)
+              </h3>
+              <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+                หน้านี้สงวนสิทธิ์เฉพาะผู้ดูแลระบบ (Admin) ในการเพิ่ม ลบ หรือแก้ไขรายชื่อสาขาและจุดกระจายสินค้า
+              </p>
+              <button
+                onClick={handleRequestAdminAuth}
+                className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md transition-colors flex items-center justify-center gap-2"
+              >
+                <Lock className="w-4 h-4" />
+                <span>ยืนยันสิทธิ์ Admin เพื่อเข้าใช้งาน</span>
+              </button>
+            </div>
+          )
+        )}
+
         {activeTab === 'formulas' && (
           <FormulaGuideModal isInlineTab={true} />
         )}
@@ -1434,6 +1572,11 @@ export default function App() {
         }}
         recipes={recipes}
         materials={materials}
+        branches={branches}
+        onManageBranches={() => {
+          setIsNewProdModalOpen(false);
+          setActiveTab('branches');
+        }}
         initialData={editingProduction?.data || null}
         onSave={handleSaveProduction}
       />

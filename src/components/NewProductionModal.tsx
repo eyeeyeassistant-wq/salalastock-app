@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { BOMRecipe, DailyProduction, MasterMaterial } from '../types/stock';
+import { BOMRecipe, DailyProduction, MasterMaterial, MasterBranch } from '../types/stock';
 import {
   CalendarCheck,
   Truck,
@@ -7,6 +7,7 @@ import {
   X,
   Check,
   Package,
+  Store,
 } from 'lucide-react';
 
 interface NewProductionModalProps {
@@ -14,8 +15,10 @@ interface NewProductionModalProps {
   onClose: () => void;
   recipes: BOMRecipe[];
   materials: MasterMaterial[];
+  branches?: MasterBranch[];
   initialData?: DailyProduction | null;
   onSave: (production: DailyProduction, autoDeduct: boolean) => void;
+  onManageBranches?: () => void;
 }
 
 export const NewProductionModal: React.FC<NewProductionModalProps> = ({
@@ -23,17 +26,28 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
   onClose,
   recipes,
   materials,
+  branches = [],
   initialData,
   onSave,
+  onManageBranches,
 }) => {
   // Unique products
   const productCodes: string[] = Array.from(new Set(recipes.map((r) => r.Product_Code)));
 
+  // Active branches or default fallback
+  const activeBranches = useMemo(() => {
+    const list = branches.filter((b) => b.is_active !== false);
+    if (list.length > 0) return list;
+    return [
+      { branch_code: 'BRANCH_A', branch_name: 'สาขา A', is_active: true },
+      { branch_code: 'BRANCH_B', branch_name: 'สาขา B', is_active: true },
+    ];
+  }, [branches]);
+
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [productCode, setProductCode] = useState(productCodes[0] || '');
   const [producedQtyStr, setProducedQtyStr] = useState<string>('50');
-  const [dispatchAStr, setDispatchAStr] = useState<string>('25');
-  const [dispatchBStr, setDispatchBStr] = useState<string>('25');
+  const [branchDispatches, setBranchDispatches] = useState<Record<string, string>>({});
   const [autoDeduct, setAutoDeduct] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -44,38 +58,56 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
         setDate(initialData.Date);
         setProductCode(initialData.Product_Code);
         setProducedQtyStr(initialData.Produced_Qty.toString());
-        setDispatchAStr((initialData.Dispatch_Branch_A || 0).toString());
-        setDispatchBStr((initialData.Dispatch_Branch_B || 0).toString());
-        setAutoDeduct(true); // Default to auto-updating ingredient deductions on edit
+        
+        const map: Record<string, string> = {};
+        activeBranches.forEach((b) => {
+          if (b.branch_code === 'BRANCH_A') {
+            map[b.branch_code] = (initialData.Dispatch_Branch_A || 0).toString();
+          } else if (b.branch_code === 'BRANCH_B') {
+            map[b.branch_code] = (initialData.Dispatch_Branch_B || 0).toString();
+          } else if (initialData.branch_dispatches && initialData.branch_dispatches[b.branch_code] !== undefined) {
+            map[b.branch_code] = initialData.branch_dispatches[b.branch_code].toString();
+          } else {
+            map[b.branch_code] = '0';
+          }
+        });
+        setBranchDispatches(map);
+        setAutoDeduct(true);
       } else {
         setDate(new Date().toISOString().split('T')[0]);
         setProductCode(productCodes[0] || '');
         setProducedQtyStr('50');
-        setDispatchAStr('25');
-        setDispatchBStr('25');
+        
+        const map: Record<string, string> = {};
+        activeBranches.forEach((b, idx) => {
+          map[b.branch_code] = idx < 2 ? '25' : '0';
+        });
+        setBranchDispatches(map);
         setAutoDeduct(true);
       }
     }
-  }, [isOpen, initialData]);
+  }, [isOpen, initialData, activeBranches]);
 
   const numProduced = useMemo(() => {
     const v = parseFloat(producedQtyStr.replace(',', '.'));
     return isNaN(v) ? 0 : v;
   }, [producedQtyStr]);
 
-  const numDispatchA = useMemo(() => {
-    const v = parseFloat(dispatchAStr.replace(',', '.'));
-    return isNaN(v) ? 0 : v;
-  }, [dispatchAStr]);
-
-  const numDispatchB = useMemo(() => {
-    const v = parseFloat(dispatchBStr.replace(',', '.'));
-    return isNaN(v) ? 0 : v;
-  }, [dispatchBStr]);
-
-  const totalDispatched = numDispatchA + numDispatchB;
+  const totalDispatched = useMemo(() => {
+    return Object.values(branchDispatches).reduce((sum: number, val: string) => {
+      const v = parseFloat(String(val || '').replace(',', '.'));
+      return sum + (isNaN(v) ? 0 : v);
+    }, 0);
+  }, [branchDispatches]);
 
   if (!isOpen) return null;
+
+  const handleBranchChange = (code: string, val: string) => {
+    setBranchDispatches((prev) => ({
+      ...prev,
+      [code]: val,
+    }));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,18 +123,28 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
       return;
     }
 
+    const numericMap: Record<string, number> = {};
+    Object.entries(branchDispatches).forEach(([code, strVal]) => {
+      const v = parseFloat(String(strVal || '').replace(',', '.'));
+      numericMap[code] = isNaN(v) ? 0 : v;
+    });
+
+    const numA = numericMap['BRANCH_A'] !== undefined ? numericMap['BRANCH_A'] : (parseFloat(branchDispatches['BRANCH_A']) || 0);
+    const numB = numericMap['BRANCH_B'] !== undefined ? numericMap['BRANCH_B'] : (parseFloat(branchDispatches['BRANCH_B']) || 0);
+
     onSave(
       {
         id: initialData?.id,
         Date: date,
         Product_Code: productCode,
         Produced_Qty: numProduced,
-        Dispatch_Branch_A: numDispatchA,
-        Dispatch_Branch_B: numDispatchB,
+        Dispatch_Branch_A: numA,
+        Dispatch_Branch_B: numB,
         Leftover_Branch_A: 0,
         Leftover_Branch_B: 0,
         Total_Dispatched: totalDispatched,
         Total_Leftover: 0,
+        branch_dispatches: numericMap,
       },
       autoDeduct
     );
@@ -225,47 +267,51 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
             </div>
           </div>
 
-          {/* Dispatch Branch A & B */}
+          {/* Dispatch Dynamic Branches */}
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
             <div className="flex items-center justify-between text-xs sm:text-sm font-bold text-slate-900">
               <span className="flex items-center gap-1.5">
                 <Truck className="w-4 h-4 text-blue-600" />
                 การจัดส่งกระจายสินค้า (Dispatch)
               </span>
-              <span className="font-mono text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200 text-xs">
-                รวมจัดส่ง: {totalDispatched.toLocaleString()} ชิ้น
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200 text-xs">
+                  รวมจัดส่ง: {totalDispatched.toLocaleString()} ชิ้น
+                </span>
+                {onManageBranches && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onManageBranches();
+                    }}
+                    className="text-[11px] text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-0.5 font-normal"
+                    title="ไปที่หน้าจัดการสาขาเพื่อเพิ่มหรือแก้ไขสาขา"
+                  >
+                    <Store className="w-3 h-3" />
+                    <span>จัดการสาขา</span>
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 pt-1">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  ส่งสาขา A (ชิ้น)
-                </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={dispatchAStr}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setDispatchAStr(e.target.value)}
-                  placeholder="0"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-mono font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-right"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  ส่งสาขา B (ชิ้น)
-                </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={dispatchBStr}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setDispatchBStr(e.target.value)}
-                  placeholder="0"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-mono font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-right"
-                />
-              </div>
+            <div className={`grid gap-3 pt-1 ${activeBranches.length <= 2 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'}`}>
+              {activeBranches.map((b) => (
+                <div key={b.branch_code}>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1 truncate" title={b.branch_name}>
+                    ส่ง {b.branch_name} (ชิ้น)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={branchDispatches[b.branch_code] ?? '0'}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => handleBranchChange(b.branch_code, e.target.value)}
+                    placeholder="0"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-mono font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-right"
+                  />
+                </div>
+              ))}
             </div>
           </div>
 

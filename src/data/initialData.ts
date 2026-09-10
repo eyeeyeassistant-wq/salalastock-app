@@ -1,10 +1,14 @@
-import { MasterMaterial, BOMRecipe, DailyProduction, StockTransaction } from '../types/stock';
+import { MasterMaterial, BOMRecipe, DailyProduction, StockTransaction, MasterBranch } from '../types/stock';
 
 // Clean initial data state (empty system ready for real business usage)
 export const INITIAL_MATERIALS: MasterMaterial[] = [];
 export const INITIAL_RECIPES: BOMRecipe[] = [];
 export const INITIAL_DAILY_PRODUCTION: DailyProduction[] = [];
 export const INITIAL_TRANSACTIONS: StockTransaction[] = [];
+export const INITIAL_BRANCHES: MasterBranch[] = [
+  { branch_code: 'BRANCH_A', branch_name: 'สาขา A', is_active: true, note: 'สาขาเริ่มต้น A' },
+  { branch_code: 'BRANCH_B', branch_name: 'สาขา B', is_active: true, note: 'สาขาเริ่มต้น B' },
+];
 
 // Optional sample / demo dataset for users who explicitly choose to test the system
 export const DEMO_MATERIALS: MasterMaterial[] = [

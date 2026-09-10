@@ -5,6 +5,7 @@ import {
   BOMRecipe,
   DailyProduction,
   StockTransaction,
+  MasterBranch,
 } from '../types/stock';
 import {
   getAvailableMonths,
@@ -61,6 +62,7 @@ interface MonthlyDashboardTabProps {
   recipes: BOMRecipe[];
   productions: DailyProduction[];
   transactions: StockTransaction[];
+  branches?: MasterBranch[];
   isSupabaseConnected?: boolean;
   onOpenSupabaseModal?: () => void;
   onOpenLineNotifyModal?: () => void;
@@ -89,6 +91,7 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
   recipes,
   productions,
   transactions,
+  branches = [],
   isSupabaseConnected = true,
   onOpenSupabaseModal,
   onOpenLineNotifyModal,
@@ -170,7 +173,22 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
     [filteredProductions]
   );
 
-  const totalDispatched = totalDispatchA + totalDispatchB;
+  const totalDispatched = useMemo(() => {
+    return filteredProductions.reduce((sum, p) => {
+      if (p.Total_Dispatched !== undefined && Number(p.Total_Dispatched) > 0) {
+        return sum + (Number(p.Total_Dispatched) || 0);
+      }
+      let branchSum = (Number(p.Dispatch_Branch_A) || 0) + (Number(p.Dispatch_Branch_B) || 0);
+      if (p.branch_dispatches) {
+        Object.entries(p.branch_dispatches).forEach(([code, val]) => {
+          if (code !== 'BRANCH_A' && code !== 'BRANCH_B') {
+            branchSum += Number(val) || 0;
+          }
+        });
+      }
+      return sum + branchSum;
+    }, 0);
+  }, [filteredProductions]);
 
   // Material Variance KPIs
   const overusedMaterials = useMemo(
@@ -249,13 +267,53 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
       }));
   }, [periodSummaries]);
 
-  // 4. Branch Distribution Chart Data
-  const branchDispatchPieData = [
-    { name: 'สาขา A (Branch A)', value: totalDispatchA, color: '#3B82F6' },
-    { name: 'สาขา B (Branch B)', value: totalDispatchB, color: '#10B981' },
-  ].filter((d) => d.value > 0);
+  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#14B8A6', '#6366F1'];
 
-  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
+  // 4. Branch Distribution Chart Data
+  const branchDispatchPieData = useMemo(() => {
+    const branchMap = new Map<string, { name: string; value: number }>();
+
+    if (branches && branches.length > 0) {
+      branches.forEach((b) => {
+        branchMap.set(b.branch_code, { name: b.branch_name, value: 0 });
+      });
+    } else {
+      branchMap.set('BRANCH_A', { name: 'สาขา A', value: 0 });
+      branchMap.set('BRANCH_B', { name: 'สาขา B', value: 0 });
+    }
+
+    filteredProductions.forEach((p) => {
+      if (branchMap.has('BRANCH_A')) {
+        branchMap.get('BRANCH_A')!.value += Number(p.Dispatch_Branch_A) || 0;
+      }
+      if (branchMap.has('BRANCH_B')) {
+        branchMap.get('BRANCH_B')!.value += Number(p.Dispatch_Branch_B) || 0;
+      }
+
+      if (p.branch_dispatches) {
+        Object.entries(p.branch_dispatches).forEach(([code, qty]) => {
+          if (code === 'BRANCH_A' || code === 'BRANCH_B') return;
+          const num = Number(qty) || 0;
+          if (branchMap.has(code)) {
+            branchMap.get(code)!.value += num;
+          } else {
+            const matched = branches.find((b) => b.branch_code === code);
+            branchMap.set(code, {
+              name: matched ? matched.branch_name : code,
+              value: num,
+            });
+          }
+        });
+      }
+    });
+
+    return Array.from(branchMap.values())
+      .filter((d) => d.value > 0)
+      .map((d, index) => ({
+        ...d,
+        color: COLORS[index % COLORS.length],
+      }));
+  }, [branches, filteredProductions, totalDispatchA, totalDispatchB]);
 
   // Export CSV
   const handleExportCSV = () => {

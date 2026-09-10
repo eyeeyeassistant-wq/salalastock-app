@@ -4,6 +4,7 @@ import {
   BOMRecipe,
   MasterMaterial,
   StockTransaction,
+  MasterBranch,
 } from '../types/stock';
 import {
   CalendarCheck,
@@ -19,35 +20,50 @@ import {
   Trash2,
   X,
   RotateCcw,
+  Store,
 } from 'lucide-react';
 
 interface DailyProductionTabProps {
   productions: DailyProduction[];
   recipes: BOMRecipe[];
   materials: MasterMaterial[];
+  branches?: MasterBranch[];
   transactions?: StockTransaction[];
   onAddProduction: (prod: DailyProduction) => void;
   onAutoDeductBatch: (production: DailyProduction) => void;
   onOpenNewProdModal: () => void;
   onEditProduction?: (production: DailyProduction, index: number) => void;
   onDeleteProduction?: (target: number | DailyProduction, deleteLinkedTxs?: boolean) => void;
+  onManageBranches?: () => void;
 }
 
 export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
   productions,
   recipes,
   materials,
+  branches = [],
   transactions = [],
   onAddProduction,
   onAutoDeductBatch,
   onOpenNewProdModal,
   onEditProduction,
   onDeleteProduction,
+  onManageBranches,
 }) => {
   const [selectedProduct, setSelectedProduct] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('');
   const [prodToDelete, setProdToDelete] = useState<{ index: number; prod: DailyProduction } | null>(null);
   const [revertDeductedStock, setRevertDeductedStock] = useState<boolean>(true);
+
+  // Active branches for columns
+  const displayBranches = useMemo(() => {
+    const list = branches.filter((b) => b.is_active !== false);
+    if (list.length > 0) return list;
+    return [
+      { branch_code: 'BRANCH_A', branch_name: 'สาขา A' },
+      { branch_code: 'BRANCH_B', branch_name: 'สาขา B' },
+    ];
+  }, [branches]);
 
   // Extract unique products
   const uniqueProducts = Array.from(
@@ -105,6 +121,17 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {onManageBranches && (
+            <button
+              onClick={onManageBranches}
+              id="btn-manage-branches"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 shadow-2xs transition-colors"
+              title="เพิ่มหรือแก้ไขรายชื่อสาขา"
+            >
+              <Store className="w-4 h-4 text-blue-600" />
+              <span>จัดการสาขา ({displayBranches.length})</span>
+            </button>
+          )}
           <button
             onClick={onOpenNewProdModal}
             id="btn-add-daily-production"
@@ -127,7 +154,7 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
           </div>
           <div className="flex items-center gap-3 text-xs text-slate-500 font-medium flex-wrap">
             <span className="flex items-center gap-1">
-              <Truck className="w-3.5 h-3.5 text-blue-600" /> Total_Dispatched (คำนวณอัตโนมัติ = ส่งสาขา A + ส่งสาขา B)
+              <Truck className="w-3.5 h-3.5 text-blue-600" /> Total_Dispatched (คำนวณอัตโนมัติจากยอดส่งทุกสาขา)
             </span>
             <span className="sm:hidden text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
               👉 เลื่อนแนวนอนเพื่อดูครบทุกช่อง
@@ -143,8 +170,11 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
                 <th className="px-4 py-3.5">รหัสสินค้า</th>
                 <th className="px-4 py-3.5">ชื่อสินค้า</th>
                 <th className="px-4 py-3.5 text-right text-slate-900 font-bold">ผลิตจริง (Produced)</th>
-                <th className="px-4 py-3.5 text-right">ส่งสาขา A</th>
-                <th className="px-4 py-3.5 text-right">ส่งสาขา B</th>
+                {displayBranches.map((b) => (
+                  <th key={b.branch_code} className="px-4 py-3.5 text-right whitespace-nowrap">
+                    ส่ง {b.branch_name}
+                  </th>
+                ))}
                 <th className="px-4 py-3.5 text-right font-bold text-slate-900 bg-slate-100/70">
                   รวมส่ง (Dispatched)
                 </th>
@@ -177,12 +207,21 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
                     <td className="px-4 py-3.5 text-right font-mono font-bold text-blue-700 text-xs sm:text-sm bg-blue-50/30">
                       {p.Produced_Qty.toLocaleString()}
                     </td>
-                    <td className="px-4 py-3.5 text-right font-mono text-slate-700 text-xs sm:text-sm">
-                      {(p.Dispatch_Branch_A || 0).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3.5 text-right font-mono text-slate-700 text-xs sm:text-sm">
-                      {(p.Dispatch_Branch_B || 0).toLocaleString()}
-                    </td>
+                    {displayBranches.map((b) => {
+                      let qty = 0;
+                      if (b.branch_code === 'BRANCH_A') {
+                        qty = p.Dispatch_Branch_A ?? (p.branch_dispatches?.['BRANCH_A'] || 0);
+                      } else if (b.branch_code === 'BRANCH_B') {
+                        qty = p.Dispatch_Branch_B ?? (p.branch_dispatches?.['BRANCH_B'] || 0);
+                      } else if (p.branch_dispatches && p.branch_dispatches[b.branch_code] !== undefined) {
+                        qty = p.branch_dispatches[b.branch_code] || 0;
+                      }
+                      return (
+                        <td key={b.branch_code} className="px-4 py-3.5 text-right font-mono text-slate-700 text-xs sm:text-sm">
+                          {Number(qty).toLocaleString()}
+                        </td>
+                      );
+                    })}
                     <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-900 bg-slate-100/50 text-xs sm:text-sm">
                       {(p.Total_Dispatched || (p.Dispatch_Branch_A || 0) + (p.Dispatch_Branch_B || 0)).toLocaleString()}
                     </td>

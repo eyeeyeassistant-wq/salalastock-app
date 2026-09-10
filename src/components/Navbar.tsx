@@ -24,6 +24,7 @@ import {
   ChevronRight,
   Menu,
   Bell,
+  Store,
 } from 'lucide-react';
 import { ActiveTab, UserRole } from '../types/stock';
 
@@ -214,6 +215,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             sub: 'BOM Recipe',
             icon: Sparkles,
             color: 'text-amber-400',
+            badge: null,
+            adminOnly: true,
+          },
+          {
+            id: 'branches' as ActiveTab,
+            name: '7. ข้อมูลสาขา',
+            sub: 'Master Branches',
+            icon: Store,
+            color: 'text-sky-400',
             badge: null,
             adminOnly: true,
           },

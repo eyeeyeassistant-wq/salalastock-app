@@ -6,6 +6,7 @@ import {
   StockTransaction,
   PhysicalStockCountItem,
   MonthlyStockCountRecord,
+  MasterBranch,
 } from '../types/stock';
 
 // Environment variable and default fallback configuration
@@ -144,6 +145,17 @@ CREATE TABLE IF NOT EXISTS monthly_stock_counts (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 6. Table: master_branches (ข้อมูลสาขาและจุดกระจายสินค้า)
+CREATE TABLE IF NOT EXISTS master_branches (
+  id TEXT PRIMARY KEY,
+  branch_code TEXT UNIQUE NOT NULL,
+  branch_name TEXT NOT NULL,
+  is_active BOOLEAN DEFAULT true,
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Enable Row Level Security (RLS) & Allow Public Anonymous Access
 ALTER TABLE master_materials ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon all on master_materials" ON master_materials;
@@ -164,6 +176,10 @@ CREATE POLICY "Allow anon all on stock_transactions" ON stock_transactions FOR A
 ALTER TABLE monthly_stock_counts ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon all on monthly_stock_counts" ON monthly_stock_counts;
 CREATE POLICY "Allow anon all on monthly_stock_counts" ON monthly_stock_counts FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE master_branches ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on master_branches" ON master_branches;
+CREATE POLICY "Allow anon all on master_branches" ON master_branches FOR ALL USING (true) WITH CHECK (true);
 `;
 
 /**
@@ -183,6 +199,7 @@ export async function testSupabaseConnection(): Promise<{
       daily_production: false,
       stock_transactions: false,
       monthly_stock_counts: false,
+      master_branches: false,
     };
 
     // Test master_materials
@@ -205,16 +222,20 @@ export async function testSupabaseConnection(): Promise<{
     const countRes = await supabase.from('monthly_stock_counts').select('id').limit(1);
     tables.monthly_stock_counts = !countRes.error;
 
+    // Test master_branches
+    const branchRes = await supabase.from('master_branches').select('id').limit(1);
+    tables.master_branches = !branchRes.error;
+
     const allOk = Object.values(tables).every(Boolean);
     const someOk = Object.values(tables).some(Boolean);
 
     if (allOk) {
-      return { success: true, message: 'เชื่อมต่อฐานข้อมูลกลางสำเร็จ พร้อมใช้งานครบทั้ง 5 ตาราง', tables };
+      return { success: true, message: 'เชื่อมต่อฐานข้อมูลกลางสำเร็จ พร้อมใช้งานครบทุกตาราง', tables };
     }
     if (someOk) {
       return {
         success: true,
-        message: 'เชื่อมต่อฐานข้อมูลได้ แต่บางตารางยังไม่ได้รัน SQL Schema',
+        message: 'เชื่อมต่อฐานข้อมูลได้ ' + (tables.master_branches ? 'พร้อมใช้งาน' : '(ตาราง master_branches สามารถรัน SQL เพิ่มเติมเพื่อบันทึกสาขาลงฐานข้อมูลได้)'),
         tables,
         error: matRes.error?.message || bomRes.error?.message,
       };
@@ -944,8 +965,136 @@ export async function seedInitialDataToSupabase(
       await supabase.from('stock_transactions').insert(txRows);
     }
 
+    // 5. Insert initial branches if table exists
+    try {
+      const { data: existingBranches } = await supabase.from('master_branches').select('branch_code').limit(1);
+      if (!existingBranches || existingBranches.length === 0) {
+        await supabase.from('master_branches').upsert([
+          { branch_code: 'BRANCH_A', branch_name: 'สาขา A', is_active: true, note: 'สาขาเริ่มต้น A' },
+          { branch_code: 'BRANCH_B', branch_name: 'สาขา B', is_active: true, note: 'สาขาเริ่มต้น B' },
+        ]);
+      }
+    } catch (branchErr) {
+      console.warn('Note: master_branches seeding skipped (table may not exist yet):', branchErr);
+    }
+
     return { seeded: true, message: 'นำเข้าข้อมูลตั้งต้นไปยังฐานข้อมูลสำเร็จเรียบร้อยแล้ว' };
   } catch (err: any) {
     return { seeded: false, message: 'เกิดข้อผิดพลาดในการใส่ข้อมูลตั้งต้น: ' + err.message };
   }
+}
+
+/**
+ * Fetch all master branches from Supabase
+ */
+export async function fetchMasterBranches(): Promise<MasterBranch[]> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('master_branches')
+      .select('*')
+      .order('branch_code', { ascending: true });
+
+    if (error) {
+      // If table does not exist in Supabase yet (PGRST205), return empty array so local fallback handles it
+      console.warn('Note: master_branches fetch notice:', error.message);
+      return [];
+    }
+
+    return (data || []).map((b: any) => ({
+      id: String(b.id || b.branch_code),
+      branch_code: String(b.branch_code || '').trim().toUpperCase(),
+      branch_name: String(b.branch_name || b.branch_code || '').trim(),
+      is_active: b.is_active !== false,
+      note: b.note || '',
+      created_at: b.created_at,
+    }));
+  } catch (err: any) {
+    console.warn('fetchMasterBranches error:', err);
+    return [];
+  }
+}
+
+/**
+ * Upsert or Save a master branch in Supabase
+ */
+export async function saveMasterBranch(branch: MasterBranch): Promise<string> {
+  const supabase = getSupabaseClient();
+  const code = (branch.branch_code || '').trim().toUpperCase();
+  const name = (branch.branch_name || branch.branch_code || '').trim();
+
+  if (!code) {
+    throw new Error('กรุณาระบุรหัสสาขา (เช่น BRANCH_A, BRANCH_B, BRANCH_C)');
+  }
+  if (!name) {
+    throw new Error('กรุณาระบุชื่อสาขา (เช่น สาขา A, สาขา สยาม)');
+  }
+
+  const payload: Record<string, any> = {
+    branch_code: code,
+    branch_name: name,
+    is_active: branch.is_active !== false,
+    note: (branch.note || '').trim(),
+    updated_at: new Date().toISOString(),
+  };
+
+  // Check if branch exists by branch_code
+  const { data: existing, error: checkErr } = await supabase
+    .from('master_branches')
+    .select('id, branch_code')
+    .eq('branch_code', code)
+    .maybeSingle();
+
+  if (checkErr) {
+    console.error('Check branch error:', checkErr);
+    throw checkErr;
+  }
+
+  if (existing?.id) {
+    const { error: updateErr } = await supabase
+      .from('master_branches')
+      .update(payload)
+      .eq('id', existing.id);
+    if (updateErr) throw updateErr;
+    return String(existing.id);
+  } else {
+    const newId = branch.id || `br_${code.toLowerCase()}_${Date.now()}`;
+    const insertPayload = { ...payload, id: newId };
+
+    // Try inserting with id first
+    const { error: insertErr } = await supabase
+      .from('master_branches')
+      .insert(insertPayload);
+
+    if (insertErr) {
+      // If error is related to generated bigint identity id, try inserting without id
+      const { error: retryErr } = await supabase
+        .from('master_branches')
+        .insert(payload);
+      if (retryErr) throw retryErr;
+    }
+    return newId;
+  }
+}
+
+/**
+ * Delete a master branch from Supabase
+ */
+export async function deleteMasterBranch(branchCodeOrId: string): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  const target = String(branchCodeOrId).trim();
+
+  let query = supabase.from('master_branches').delete();
+  if (/^\d+$/.test(target)) {
+    query = query.or(`id.eq.${Number(target)},branch_code.eq.${target.toUpperCase()}`);
+  } else {
+    query = query.or(`id.eq.${target},branch_code.eq.${target.toUpperCase()}`);
+  }
+
+  const { error } = await query;
+  if (error) {
+    console.error('Error deleting branch from cloud database:', error);
+    throw error;
+  }
+  return true;
 }

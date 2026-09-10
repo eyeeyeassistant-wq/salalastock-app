@@ -193,7 +193,7 @@ export const SupabaseSyncModal: React.FC<SupabaseSyncModalProps> = ({
           <div>
             <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2.5 flex items-center gap-2">
               <Table className="w-4 h-4 text-emerald-600" />
-              สถานะตารางข้อมูลในระบบฐานข้อมูล (ทั้ง 5 ตาราง)
+              สถานะตารางข้อมูลในระบบฐานข้อมูล (ทั้ง 6 ตาราง)
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
               {[
@@ -202,6 +202,7 @@ export const SupabaseSyncModal: React.FC<SupabaseSyncModalProps> = ({
                 { name: 'daily_production', desc: 'ยอดผลิตประจำวันและจัดส่ง' },
                 { name: 'stock_transactions', desc: 'ประวัติรับเข้า/เบิกใช้จริง' },
                 { name: 'monthly_stock_counts', desc: 'ตรวจนับจริงสิ้นเดือน & ปิดงวด' },
+                { name: 'master_branches', desc: 'ข้อมูลสาขาและจุดกระจายสินค้า' },
               ].map((tbl) => {
                 const isReady = testResult?.tables?.[tbl.name];
                 return (

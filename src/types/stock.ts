@@ -15,6 +15,15 @@ export interface BOMRecipe {
   Standard_Qty: number;
 }
 
+export interface MasterBranch {
+  id?: string;
+  branch_code: string;
+  branch_name: string;
+  is_active: boolean;
+  note?: string;
+  created_at?: string;
+}
+
 export interface DailyProduction {
   id?: string;
   Date: string; // YYYY-MM-DD
@@ -24,8 +33,9 @@ export interface DailyProduction {
   Dispatch_Branch_B: number;
   Leftover_Branch_A?: number;
   Leftover_Branch_B?: number;
-  Total_Dispatched?: number; // Formula: Dispatch_A + Dispatch_B
+  Total_Dispatched?: number; // Formula: Dispatch_A + Dispatch_B + other branches
   Total_Leftover?: number; // Formula: Leftover_A + Leftover_B
+  branch_dispatches?: Record<string, number>; // Dynamic dispatches per branch: { [branch_code]: quantity }
 }
 
 export type TransactionType = 'Receive' | 'Actual Usage';
@@ -92,4 +102,5 @@ export type ActiveTab =
   | 'stock-count'
   | 'materials'
   | 'recipes'
+  | 'branches'
   | 'formulas';
