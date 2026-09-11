@@ -6,7 +6,6 @@ import {
   CalendarCheck,
   ClipboardCheck,
   ArrowLeftRight,
-  BookOpen,
   Plus,
   RefreshCw,
   UploadCloud,
@@ -227,15 +226,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             badge: null,
             adminOnly: true,
           },
-          {
-            id: 'formulas' as ActiveTab,
-            name: 'คู่มือระบบ & สูตร',
-            sub: 'System & Formula Guide',
-            icon: BookOpen,
-            color: 'text-purple-400',
-            badge: null,
-            adminOnly: true,
-          },
         ]
       : []),
   ];
@@ -272,7 +262,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={() => {
                   setUserRole('staff');
-                  if (activeTab === 'materials' || activeTab === 'recipes' || activeTab === 'formulas') {
+                  if (activeTab === 'materials' || activeTab === 'recipes' || activeTab === 'branches') {
                     setActiveTab('dashboard');
                   }
                 }}

@@ -156,5 +156,4 @@ export type ActiveTab =
   | 'stock-count'
   | 'materials'
   | 'recipes'
-  | 'branches'
-  | 'formulas';
+  | 'branches';

@@ -1570,10 +1570,6 @@ export default function App() {
             </div>
           )
         )}
-
-        {activeTab === 'formulas' && (
-          <FormulaGuideModal isInlineTab={true} />
-        )}
       </main>
 
       {/* Footer */}
