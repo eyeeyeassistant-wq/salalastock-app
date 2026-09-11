@@ -34,7 +34,8 @@ export const FormulaGuideModal: React.FC<FormulaGuideModalProps> = ({
   const formulas = {
     totalReceive: `=SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A2, Stock_Transactions!$B:$B, "Receive")`,
     actualUsage: `=SUMIFS(Stock_Transactions!$D:$D, Stock_Transactions!$C:$C, A2, Stock_Transactions!$B:$B, "Actual Usage")`,
-    expectedUsage: `=IFERROR(SUMPRODUCT(SUMIF(Daily_Production!$B:$B, BOM_Recipe!$A$2:$A, Daily_Production!$C:$C), (BOM_Recipe!$C$2:$C = A2) * IFERROR(N(BOM_Recipe!$D$2:$D), 0)), 0)`,
+    expectedUsage: `=IFERROR(SUMPRODUCT(SUMIF(Daily_Production!$B:$B, FILTER(BOM_Recipe!$A$2:$A, BOM_Recipe!$C$2:$C=A2), Daily_Production!$C:$C), FILTER(BOM_Recipe!$D$2:$D, BOM_Recipe!$C$2:$C=A2)), 0)`,
+    expectedUsageSheets: `=IFERROR(SUM(MAP(FILTER(BOM_Recipe!$A$2:$A, BOM_Recipe!$C$2:$C=A2), FILTER(BOM_Recipe!$D$2:$D, BOM_Recipe!$C$2:$C=A2), LAMBDA(prod, std, SUMIF(Daily_Production!$B:$B, prod, Daily_Production!$C:$C) * std))), 0)`,
     endingStock: `=D2 + E2 - F2`,
     variance: `=F2 - G2`,
     stockStatus: `=IF(A2="", "", IF(H2 <= XLOOKUP(A2, Master_Materials!$A:$A, Master_Materials!$E:$E, 0), "⚠️ วัตถุดิบใกล้หมด (ต้องสั่งเพิ่ม)", "ปกติ"))`,
@@ -138,13 +139,13 @@ export const FormulaGuideModal: React.FC<FormulaGuideModalProps> = ({
           </div>
 
           {/* Column G: Expected_Usage */}
-          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5">
+          <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-900">
                 3. Expected_Usage (คอลัมน์ G) • ยอดที่ควรเบิกตามสูตร (ยอดผลิต x Standard_Qty)
               </span>
               <button
-                onClick={() => copyToClipboard(formulas.expectedUsage, 'expected')}
+                onClick={() => copyToClipboard(formulas.expectedUsageSheets, 'expected')}
                 className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 transition-colors"
               >
                 {copiedKey === 'expected' ? (
@@ -152,14 +153,33 @@ export const FormulaGuideModal: React.FC<FormulaGuideModalProps> = ({
                 ) : (
                   <Copy className="w-3.5 h-3.5 text-slate-500" />
                 )}
-                <span>{copiedKey === 'expected' ? 'คัดลอกแล้ว!' : 'คัดลอกสูตร'}</span>
+                <span>{copiedKey === 'expected' ? 'คัดลอกแล้ว!' : 'คัดลอกสูตร Google Sheets'}</span>
               </button>
             </div>
-            <code className="block p-2 bg-slate-900 text-purple-300 font-mono text-xs rounded overflow-x-auto">
-              {formulas.expectedUsage}
-            </code>
+            <div>
+              <div className="text-[11px] font-semibold text-slate-600 mb-1 flex items-center justify-between">
+                <span>สำหรับ Google Sheets (แม่นยำ ไม่คืนค่า 0):</span>
+              </div>
+              <code className="block p-2 bg-slate-900 text-purple-300 font-mono text-xs rounded overflow-x-auto">
+                {formulas.expectedUsageSheets}
+              </code>
+            </div>
+            <div>
+              <div className="text-[11px] font-semibold text-slate-600 mb-1 flex items-center justify-between">
+                <span>สำหรับ Excel 365 / Formula ทั่วไป:</span>
+                <button
+                  onClick={() => copyToClipboard(formulas.expectedUsage, 'expectedExcel')}
+                  className="text-[11px] text-blue-600 hover:underline font-mono"
+                >
+                  {copiedKey === 'expectedExcel' ? 'คัดลอกแล้ว!' : 'คัดลอก Excel'}
+                </button>
+              </div>
+              <code className="block p-2 bg-slate-900 text-purple-300 font-mono text-xs rounded overflow-x-auto">
+                {formulas.expectedUsage}
+              </code>
+            </div>
             <p className="text-[11px] text-slate-500">
-              คำนวณเชื่อมโยงข้าม Tab: หายอดผลิต <code>Produced_Qty</code> ใน Tab Daily_Production คูณกับสัดส่วนในสูตร <code>BOM_Recipe</code>
+              💡 เชื่อมโยงข้าม Tab: ค้นหา <code>Produced_Qty</code> ใน Tab Daily_Production สำหรับสินค้าที่ใช้วัตถุดิบรหัสนี้ (A2) แล้วคูณกับสัดส่วน <code>Standard_Qty</code> ใน Tab BOM_Recipe
             </p>
           </div>
 

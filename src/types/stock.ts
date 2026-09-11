@@ -94,6 +94,60 @@ export interface MonthlyStockSummary {
 
 export type UserRole = 'staff' | 'admin';
 
+export interface MonthlyProductionSummary {
+  id?: string;
+  Month: string; // YYYY-MM
+  Product_Code: string;
+  Product_Name: string;
+  Total_Produced_Qty: number;
+  branch_dispatches?: Record<string, number>; // { [branch_code]: quantity }
+  Total_Dispatched_Qty: number;
+  Days_Produced_Count: number;
+  Dispatch_Percentage?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface MonthlyInventorySnapshot {
+  id?: string;
+  Month: string; // YYYY-MM
+  RM_Code: string;
+  RM_Name: string;
+  Unit: string;
+  Opening_Stock: number;
+  Total_Receive: number;
+  Actual_Usage: number;
+  Expected_Usage: number;
+  Ending_Stock: number;
+  Variance: number;
+  Variance_Percentage: number;
+  Safety_Stock: number;
+  Stock_Status: string;
+  Physical_Count?: number;
+  Physical_Variance?: number;
+  Physical_Status?: string;
+  closed_at?: string;
+  closed_by?: string;
+}
+
+export interface StockCountSessionHeader {
+  id: string;
+  Month: string; // YYYY-MM
+  Count_Date: string; // YYYY-MM-DD
+  Counted_By: string;
+  Total_Items_Counted: number;
+  Discrepancy_Items_Count: number;
+  Status: 'draft' | 'completed' | 'applied_to_opening';
+  Note?: string;
+  created_at?: string;
+}
+
+export interface SystemSettingItem {
+  key: string;
+  value: string;
+  updated_at?: string;
+}
+
 export type ActiveTab =
   | 'dashboard'
   | 'production'

@@ -7,6 +7,10 @@ import {
   PhysicalStockCountItem,
   MonthlyStockCountRecord,
   MasterBranch,
+  MonthlyProductionSummary,
+  MonthlyInventorySnapshot,
+  StockCountSessionHeader,
+  MonthlyStockSummary,
 } from '../types/stock';
 
 // Environment variable and default fallback configuration
@@ -83,8 +87,91 @@ export function getSupabaseClient(): SupabaseClient {
 }
 
 // SQL Schema Definition for easy copy/paste into Database SQL Console
+export const NEW_TABLES_SQL_SCHEMA = `-- ============================================================
+-- SQL Schema สำหรับ 4 ตารางใหม่ (สรุปยอดผลิต/สต็อก/รอบตรวจนับ/ตั้งค่า)
+-- นำโค้ดนี้ไปรันใน Supabase SQL Editor หากเคยรัน 6 ตารางแรกไปแล้ว
+-- ============================================================
+
+-- 7. Table: monthly_production_summary (สรุปผลรวมการผลิตแต่ละเมนูและยอดส่งสาขารายเดือน)
+CREATE TABLE IF NOT EXISTS monthly_production_summary (
+  id TEXT PRIMARY KEY,
+  month TEXT NOT NULL,
+  product_code TEXT NOT NULL,
+  product_name TEXT NOT NULL,
+  total_produced_qty NUMERIC DEFAULT 0,
+  branch_dispatches JSONB DEFAULT '{}'::jsonb,
+  total_dispatched_qty NUMERIC DEFAULT 0,
+  days_produced_count INTEGER DEFAULT 0,
+  dispatch_percentage NUMERIC DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_monthly_prod_month ON monthly_production_summary(month);
+
+-- 8. Table: monthly_inventory_summary (ผลสรุปคำนวณสต็อกและ Variance ปิดงวดรายเดือน)
+CREATE TABLE IF NOT EXISTS monthly_inventory_summary (
+  id TEXT PRIMARY KEY,
+  month TEXT NOT NULL,
+  rm_code TEXT NOT NULL,
+  rm_name TEXT NOT NULL,
+  unit TEXT NOT NULL,
+  opening_stock NUMERIC DEFAULT 0,
+  total_receive NUMERIC DEFAULT 0,
+  actual_usage NUMERIC DEFAULT 0,
+  expected_usage NUMERIC DEFAULT 0,
+  ending_stock NUMERIC DEFAULT 0,
+  variance NUMERIC DEFAULT 0,
+  variance_percentage NUMERIC DEFAULT 0,
+  safety_stock NUMERIC DEFAULT 0,
+  stock_status TEXT,
+  physical_count NUMERIC,
+  physical_variance NUMERIC,
+  physical_status TEXT,
+  closed_at TIMESTAMPTZ DEFAULT NOW(),
+  closed_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_monthly_inv_month ON monthly_inventory_summary(month);
+
+-- 9. Table: stock_count_sessions (รอบเอกสารการตรวจนับสต็อกสิ้นเดือน)
+CREATE TABLE IF NOT EXISTS stock_count_sessions (
+  id TEXT PRIMARY KEY,
+  month TEXT NOT NULL,
+  count_date TEXT NOT NULL,
+  counted_by TEXT NOT NULL,
+  total_items_counted INTEGER DEFAULT 0,
+  discrepancy_items_count INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'completed',
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 10. Table: system_settings (การตั้งค่าระบบส่วนกลางและ LINE Notify)
+CREATE TABLE IF NOT EXISTS system_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Row Level Security (RLS) & Allow Anonymous Access
+ALTER TABLE monthly_production_summary ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on monthly_production_summary" ON monthly_production_summary;
+CREATE POLICY "Allow anon all on monthly_production_summary" ON monthly_production_summary FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE monthly_inventory_summary ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on monthly_inventory_summary" ON monthly_inventory_summary;
+CREATE POLICY "Allow anon all on monthly_inventory_summary" ON monthly_inventory_summary FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE stock_count_sessions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on stock_count_sessions" ON stock_count_sessions;
+CREATE POLICY "Allow anon all on stock_count_sessions" ON stock_count_sessions FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE system_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on system_settings" ON system_settings;
+CREATE POLICY "Allow anon all on system_settings" ON system_settings FOR ALL USING (true) WITH CHECK (true);
+`;
+
 export const SUPABASE_SQL_SCHEMA = `-- ============================================================
--- SQL Schema for Stock & Variance Tracking System
+-- SQL Schema for Complete Stock & Production Tracking System (10 Tables)
 -- Execute this in your Database SQL Console / Query Editor
 -- ============================================================
 
@@ -109,18 +196,32 @@ CREATE TABLE IF NOT EXISTS bom_recipe (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Table: daily_production
+-- 3. Table: master_branches (ข้อมูลสาขาและจุดกระจายสินค้า)
+CREATE TABLE IF NOT EXISTS master_branches (
+  id TEXT PRIMARY KEY,
+  branch_code TEXT UNIQUE NOT NULL,
+  branch_name TEXT NOT NULL,
+  is_active BOOLEAN DEFAULT true,
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. Table: daily_production (บันทึกยอดผลิตและกระจายส่งสาขาแบบ Dynamic ไม่จำกัดสาขา)
 CREATE TABLE IF NOT EXISTS daily_production (
   id TEXT PRIMARY KEY,
   date TEXT NOT NULL,
   product_code TEXT NOT NULL,
   produced_qty NUMERIC DEFAULT 0,
-  dispatch_branch_a NUMERIC DEFAULT 0,
-  dispatch_branch_b NUMERIC DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  total_dispatched NUMERIC DEFAULT 0,
+  branch_dispatches JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_daily_production_date ON daily_production(date);
+CREATE INDEX IF NOT EXISTS idx_daily_production_product ON daily_production(product_code);
 
--- 4. Table: stock_transactions
+-- 5. Table: stock_transactions
 CREATE TABLE IF NOT EXISTS stock_transactions (
   id TEXT PRIMARY KEY,
   date TEXT NOT NULL,
@@ -132,7 +233,7 @@ CREATE TABLE IF NOT EXISTS stock_transactions (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. Table: monthly_stock_counts
+-- 6. Table: monthly_stock_counts
 CREATE TABLE IF NOT EXISTS monthly_stock_counts (
   id TEXT PRIMARY KEY,
   count_date TEXT NOT NULL,
@@ -145,14 +246,63 @@ CREATE TABLE IF NOT EXISTS monthly_stock_counts (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. Table: master_branches (ข้อมูลสาขาและจุดกระจายสินค้า)
-CREATE TABLE IF NOT EXISTS master_branches (
+-- 7. Table: monthly_production_summary (สรุปผลรวมการผลิตแต่ละเมนูและยอดส่งสาขารายเดือน)
+CREATE TABLE IF NOT EXISTS monthly_production_summary (
   id TEXT PRIMARY KEY,
-  branch_code TEXT UNIQUE NOT NULL,
-  branch_name TEXT NOT NULL,
-  is_active BOOLEAN DEFAULT true,
-  note TEXT,
+  month TEXT NOT NULL,
+  product_code TEXT NOT NULL,
+  product_name TEXT NOT NULL,
+  total_produced_qty NUMERIC DEFAULT 0,
+  branch_dispatches JSONB DEFAULT '{}'::jsonb,
+  total_dispatched_qty NUMERIC DEFAULT 0,
+  days_produced_count INTEGER DEFAULT 0,
+  dispatch_percentage NUMERIC DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_monthly_prod_month ON monthly_production_summary(month);
+
+-- 8. Table: monthly_inventory_summary (ผลสรุปคำนวณสต็อกและ Variance ปิดงวดรายเดือน)
+CREATE TABLE IF NOT EXISTS monthly_inventory_summary (
+  id TEXT PRIMARY KEY,
+  month TEXT NOT NULL,
+  rm_code TEXT NOT NULL,
+  rm_name TEXT NOT NULL,
+  unit TEXT NOT NULL,
+  opening_stock NUMERIC DEFAULT 0,
+  total_receive NUMERIC DEFAULT 0,
+  actual_usage NUMERIC DEFAULT 0,
+  expected_usage NUMERIC DEFAULT 0,
+  ending_stock NUMERIC DEFAULT 0,
+  variance NUMERIC DEFAULT 0,
+  variance_percentage NUMERIC DEFAULT 0,
+  safety_stock NUMERIC DEFAULT 0,
+  stock_status TEXT,
+  physical_count NUMERIC,
+  physical_variance NUMERIC,
+  physical_status TEXT,
+  closed_at TIMESTAMPTZ DEFAULT NOW(),
+  closed_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_monthly_inv_month ON monthly_inventory_summary(month);
+
+-- 9. Table: stock_count_sessions (รอบเอกสารการตรวจนับสต็อกสิ้นเดือน)
+CREATE TABLE IF NOT EXISTS stock_count_sessions (
+  id TEXT PRIMARY KEY,
+  month TEXT NOT NULL,
+  count_date TEXT NOT NULL,
+  counted_by TEXT NOT NULL,
+  total_items_counted INTEGER DEFAULT 0,
+  discrepancy_items_count INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'completed',
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 10. Table: system_settings (การตั้งค่าระบบส่วนกลางและ LINE Notify)
+CREATE TABLE IF NOT EXISTS system_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -180,7 +330,272 @@ CREATE POLICY "Allow anon all on monthly_stock_counts" ON monthly_stock_counts F
 ALTER TABLE master_branches ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon all on master_branches" ON master_branches;
 CREATE POLICY "Allow anon all on master_branches" ON master_branches FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE monthly_production_summary ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on monthly_production_summary" ON monthly_production_summary;
+CREATE POLICY "Allow anon all on monthly_production_summary" ON monthly_production_summary FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE monthly_inventory_summary ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on monthly_inventory_summary" ON monthly_inventory_summary;
+CREATE POLICY "Allow anon all on monthly_inventory_summary" ON monthly_inventory_summary FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE stock_count_sessions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on stock_count_sessions" ON stock_count_sessions;
+CREATE POLICY "Allow anon all on stock_count_sessions" ON stock_count_sessions FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE system_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on system_settings" ON system_settings;
+CREATE POLICY "Allow anon all on system_settings" ON system_settings FOR ALL USING (true) WITH CHECK (true);
+
+-- ใส่ข้อมูลสาขาเริ่มต้น (สามารถเพิ่ม/แก้/ลบ สาขาได้ตามต้องการในเมนูจัดการสาขา)
+INSERT INTO master_branches (id, branch_code, branch_name, is_active, note)
+VALUES 
+  ('br_branch_a', 'BRANCH_A', 'สาขา A', true, 'สาขาเริ่มต้น A'),
+  ('br_branch_b', 'BRANCH_B', 'สาขา B', true, 'สาขาเริ่มต้น B')
+ON CONFLICT (branch_code) DO NOTHING;
 `;
+
+export const MIGRATION_SQL_SCHEMA = `-- ============================================================
+-- SQL Migration & Complete Setup: อัปเกรดฐานข้อมูลเดิม + สร้างตารางที่ขาดทั้งหมด (ครบ 10 ตาราง)
+-- สามารถนำโค้ดนี้ไปรันใน Supabase SQL Editor ได้ทันที (ปลอดภัย รันซ้ำได้)
+-- ============================================================
+
+-- 1. Table: master_materials (ทะเบียนวัตถุดิบ)
+CREATE TABLE IF NOT EXISTS master_materials (
+  rm_code TEXT PRIMARY KEY,
+  rm_name TEXT NOT NULL,
+  unit TEXT NOT NULL,
+  opening_stock NUMERIC DEFAULT 0,
+  safety_stock NUMERIC DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. Table: bom_recipe (สูตรการผลิตมาตรฐาน BOM)
+CREATE TABLE IF NOT EXISTS bom_recipe (
+  id TEXT PRIMARY KEY,
+  product_code TEXT NOT NULL,
+  product_name TEXT NOT NULL,
+  rm_code TEXT NOT NULL,
+  standard_qty NUMERIC DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. Table: master_branches (ทะเบียนสาขาและจุดกระจายสินค้า)
+CREATE TABLE IF NOT EXISTS master_branches (
+  id TEXT PRIMARY KEY,
+  branch_code TEXT UNIQUE NOT NULL,
+  branch_name TEXT NOT NULL,
+  is_active BOOLEAN DEFAULT true,
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+INSERT INTO master_branches (id, branch_code, branch_name, is_active, note)
+VALUES 
+  ('br_branch_a', 'BRANCH_A', 'สาขา A', true, 'สาขาเริ่มต้น A'),
+  ('br_branch_b', 'BRANCH_B', 'สาขา B', true, 'สาขาเริ่มต้น B')
+ON CONFLICT (branch_code) DO NOTHING;
+
+-- 4. Table: daily_production (สร้างตารางใหม่หากยังไม่มี หรืออัปเกรดตารางเดิม)
+CREATE TABLE IF NOT EXISTS daily_production (
+  id TEXT PRIMARY KEY,
+  date TEXT NOT NULL,
+  product_code TEXT NOT NULL,
+  produced_qty NUMERIC DEFAULT 0,
+  total_dispatched NUMERIC DEFAULT 0,
+  branch_dispatches JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_daily_production_date ON daily_production(date);
+CREATE INDEX IF NOT EXISTS idx_daily_production_product ON daily_production(product_code);
+
+-- เพิ่มคอลัมน์ branch_dispatches (JSONB) และ total_dispatched ให้ตารางเดิมหากเคยสร้างไว้แล้ว
+ALTER TABLE daily_production ADD COLUMN IF NOT EXISTS branch_dispatches JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE daily_production ADD COLUMN IF NOT EXISTS total_dispatched NUMERIC DEFAULT 0;
+
+-- ย้ายข้อมูลเก่าจาก dispatch_branch_a และ dispatch_branch_b เข้าสู่ branch_dispatches JSONB
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'daily_production' AND column_name = 'dispatch_branch_a'
+  ) THEN
+    UPDATE daily_production 
+    SET 
+      branch_dispatches = jsonb_build_object(
+        'BRANCH_A', COALESCE(dispatch_branch_a, 0),
+        'BRANCH_B', COALESCE(dispatch_branch_b, 0)
+      ),
+      total_dispatched = COALESCE(dispatch_branch_a, 0) + COALESCE(dispatch_branch_b, 0)
+    WHERE branch_dispatches IS NULL OR branch_dispatches = '{}'::jsonb;
+
+    -- ลบคอลัมน์ dispatch_branch_a และ dispatch_branch_b ออก
+    ALTER TABLE daily_production DROP COLUMN IF EXISTS dispatch_branch_a;
+    ALTER TABLE daily_production DROP COLUMN IF EXISTS dispatch_branch_b;
+  END IF;
+END $$;
+
+-- 5. Table: stock_transactions (ประวัติรับเข้า/เบิกใช้จริง)
+CREATE TABLE IF NOT EXISTS stock_transactions (
+  id TEXT PRIMARY KEY,
+  date TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('Receive', 'Actual Usage')),
+  rm_code TEXT NOT NULL,
+  qty NUMERIC DEFAULT 0,
+  recorder TEXT,
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_stock_tx_date ON stock_transactions(date);
+CREATE INDEX IF NOT EXISTS idx_stock_tx_rm_code ON stock_transactions(rm_code);
+
+-- 6. Table: monthly_stock_counts (ตรวจนับสต็อกจริงสิ้นเดือน)
+CREATE TABLE IF NOT EXISTS monthly_stock_counts (
+  id TEXT PRIMARY KEY,
+  count_date TEXT NOT NULL,
+  rm_code TEXT NOT NULL,
+  system_stock NUMERIC DEFAULT 0,
+  actual_count NUMERIC DEFAULT 0,
+  discrepancy NUMERIC DEFAULT 0,
+  recorder TEXT,
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 7. Table: monthly_production_summary (สรุปยอดผลิตแต่ละเมนูแต่ละสาขารายเดือน)
+CREATE TABLE IF NOT EXISTS monthly_production_summary (
+  id TEXT PRIMARY KEY,
+  month TEXT NOT NULL,
+  product_code TEXT NOT NULL,
+  product_name TEXT NOT NULL,
+  total_produced_qty NUMERIC DEFAULT 0,
+  branch_dispatches JSONB DEFAULT '{}'::jsonb,
+  total_dispatched_qty NUMERIC DEFAULT 0,
+  days_produced_count INTEGER DEFAULT 0,
+  dispatch_percentage NUMERIC DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_monthly_prod_month ON monthly_production_summary(month);
+
+-- 8. Table: monthly_inventory_summary (ผลสรุปคำนวณสต็อกและ Variance ปิดงวดรายเดือน)
+CREATE TABLE IF NOT EXISTS monthly_inventory_summary (
+  id TEXT PRIMARY KEY,
+  month TEXT NOT NULL,
+  rm_code TEXT NOT NULL,
+  rm_name TEXT NOT NULL,
+  unit TEXT NOT NULL,
+  opening_stock NUMERIC DEFAULT 0,
+  total_receive NUMERIC DEFAULT 0,
+  actual_usage NUMERIC DEFAULT 0,
+  expected_usage NUMERIC DEFAULT 0,
+  ending_stock NUMERIC DEFAULT 0,
+  variance NUMERIC DEFAULT 0,
+  variance_percentage NUMERIC DEFAULT 0,
+  safety_stock NUMERIC DEFAULT 0,
+  stock_status TEXT,
+  physical_count NUMERIC,
+  physical_variance NUMERIC,
+  physical_status TEXT,
+  closed_at TIMESTAMPTZ DEFAULT NOW(),
+  closed_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_monthly_inv_month ON monthly_inventory_summary(month);
+
+-- 9. Table: stock_count_sessions (รอบเอกสารการตรวจนับสิ้นเดือน)
+CREATE TABLE IF NOT EXISTS stock_count_sessions (
+  id TEXT PRIMARY KEY,
+  month TEXT NOT NULL,
+  count_date TEXT NOT NULL,
+  counted_by TEXT NOT NULL,
+  total_items_counted INTEGER DEFAULT 0,
+  discrepancy_items_count INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'completed',
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 10. Table: system_settings (การตั้งค่าระบบส่วนกลาง)
+CREATE TABLE IF NOT EXISTS system_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 11. เปิดสิทธิ์ Row Level Security (RLS) สำหรับทั้ง 10 ตาราง
+ALTER TABLE master_materials ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on master_materials" ON master_materials;
+CREATE POLICY "Allow anon all on master_materials" ON master_materials FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE bom_recipe ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on bom_recipe" ON bom_recipe;
+CREATE POLICY "Allow anon all on bom_recipe" ON bom_recipe FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE master_branches ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on master_branches" ON master_branches;
+CREATE POLICY "Allow anon all on master_branches" ON master_branches FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE daily_production ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on daily_production" ON daily_production;
+CREATE POLICY "Allow anon all on daily_production" ON daily_production FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE stock_transactions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on stock_transactions" ON stock_transactions;
+CREATE POLICY "Allow anon all on stock_transactions" ON stock_transactions FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE monthly_stock_counts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on monthly_stock_counts" ON monthly_stock_counts;
+CREATE POLICY "Allow anon all on monthly_stock_counts" ON monthly_stock_counts FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE monthly_production_summary ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on monthly_production_summary" ON monthly_production_summary;
+CREATE POLICY "Allow anon all on monthly_production_summary" ON monthly_production_summary FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE monthly_inventory_summary ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on monthly_inventory_summary" ON monthly_inventory_summary;
+CREATE POLICY "Allow anon all on monthly_inventory_summary" ON monthly_inventory_summary FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE stock_count_sessions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on stock_count_sessions" ON stock_count_sessions;
+CREATE POLICY "Allow anon all on stock_count_sessions" ON stock_count_sessions FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE system_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon all on system_settings" ON system_settings;
+CREATE POLICY "Allow anon all on system_settings" ON system_settings FOR ALL USING (true) WITH CHECK (true);
+`;
+
+/**
+ * Safe helper that wraps a Supabase query with transient network retry
+ */
+async function withNetworkRetry<T = any[]>(
+  queryFn: () => PromiseLike<{ data: T | null; error: any }>
+): Promise<{ data: T | null; error: any }> {
+  try {
+    let res = await queryFn();
+    const isNetworkErr =
+      res?.error &&
+      (res.error.message?.includes('Failed to fetch') ||
+        res.error.details?.includes('Failed to fetch') ||
+        res.error.message?.includes('NetworkError') ||
+        res.error.code === '');
+
+    if (isNetworkErr) {
+      // Retry once after a brief delay
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      try {
+        res = await queryFn();
+      } catch (retryCatch: any) {
+        return { data: null, error: { message: retryCatch?.message || 'Network error' } };
+      }
+    }
+    return res;
+  } catch (err: any) {
+    return { data: null, error: { message: err?.message || 'Unexpected network error' } };
+  }
+}
 
 /**
  * Test Supabase connection and check table availability
@@ -200,42 +615,102 @@ export async function testSupabaseConnection(): Promise<{
       stock_transactions: false,
       monthly_stock_counts: false,
       master_branches: false,
+      monthly_production_summary: false,
+      monthly_inventory_summary: false,
+      stock_count_sessions: false,
+      system_settings: false,
     };
 
-    // Test master_materials
-    const matRes = await supabase.from('master_materials').select('rm_code').limit(1);
+    // Run table checks in parallel
+    const [
+      matRes,
+      bomRes,
+      prodRes,
+      txRes,
+      countRes,
+      branchRes,
+      prodSumRes,
+      invSumRes,
+      sessionRes,
+      settingRes,
+    ] = await Promise.all([
+      supabase.from('master_materials').select('rm_code').limit(1),
+      supabase.from('bom_recipe').select('id').limit(1),
+      supabase.from('daily_production').select('id').limit(1),
+      supabase.from('stock_transactions').select('id').limit(1),
+      supabase.from('monthly_stock_counts').select('id').limit(1),
+      supabase.from('master_branches').select('id').limit(1),
+      supabase.from('monthly_production_summary').select('id').limit(1),
+      supabase.from('monthly_inventory_summary').select('id').limit(1),
+      supabase.from('stock_count_sessions').select('id').limit(1),
+      supabase.from('system_settings').select('key').limit(1),
+    ]);
+
     tables.master_materials = !matRes.error;
-
-    // Test bom_recipe
-    const bomRes = await supabase.from('bom_recipe').select('id').limit(1);
     tables.bom_recipe = !bomRes.error;
-
-    // Test daily_production
-    const prodRes = await supabase.from('daily_production').select('id').limit(1);
     tables.daily_production = !prodRes.error;
-
-    // Test stock_transactions
-    const txRes = await supabase.from('stock_transactions').select('id').limit(1);
     tables.stock_transactions = !txRes.error;
-
-    // Test monthly_stock_counts
-    const countRes = await supabase.from('monthly_stock_counts').select('id').limit(1);
     tables.monthly_stock_counts = !countRes.error;
-
-    // Test master_branches
-    const branchRes = await supabase.from('master_branches').select('id').limit(1);
     tables.master_branches = !branchRes.error;
+    tables.monthly_production_summary = !prodSumRes.error;
+    tables.monthly_inventory_summary = !invSumRes.error;
+    tables.stock_count_sessions = !sessionRes.error;
+    tables.system_settings = !settingRes.error;
+
+    // Check if network is down or completely unreachable
+    const allResponses = [
+      matRes,
+      bomRes,
+      prodRes,
+      txRes,
+      countRes,
+      branchRes,
+      prodSumRes,
+      invSumRes,
+      sessionRes,
+      settingRes,
+    ];
+    const isNetworkDown = allResponses.every(
+      (r) =>
+        r.error &&
+        (r.error.message?.includes('Failed to fetch') ||
+          r.error.details?.includes('Failed to fetch') ||
+          r.error.message?.includes('NetworkError'))
+    );
+
+    if (isNetworkDown) {
+      return {
+        success: false,
+        message: 'ไม่สามารถเชื่อมต่อฐานข้อมูลได้ (Network / Offline) ระบบใช้งานข้อมูลในเครื่องให้อัตโนมัติ',
+        tables,
+        error: 'Network connection unavailable',
+      };
+    }
 
     const allOk = Object.values(tables).every(Boolean);
+    const coreOk =
+      tables.master_materials &&
+      tables.bom_recipe &&
+      tables.daily_production &&
+      tables.stock_transactions &&
+      tables.monthly_stock_counts &&
+      tables.master_branches;
     const someOk = Object.values(tables).some(Boolean);
 
     if (allOk) {
-      return { success: true, message: 'เชื่อมต่อฐานข้อมูลกลางสำเร็จ พร้อมใช้งานครบทุกตาราง', tables };
+      return { success: true, message: 'เชื่อมต่อฐานข้อมูลกลางสำเร็จ พร้อมใช้งานครบทั้ง 10 ตาราง', tables };
+    }
+    if (coreOk) {
+      return {
+        success: true,
+        message: 'ตารางหลัก 6 ตารางพร้อมใช้งาน (สามารถรัน SQL เพิ่มเติมเพื่อสร้าง 4 ตารางสรุปย้อนหลัง & ตั้งค่าได้)',
+        tables,
+      };
     }
     if (someOk) {
       return {
         success: true,
-        message: 'เชื่อมต่อฐานข้อมูลได้ ' + (tables.master_branches ? 'พร้อมใช้งาน' : '(ตาราง master_branches สามารถรัน SQL เพิ่มเติมเพื่อบันทึกสาขาลงฐานข้อมูลได้)'),
+        message: 'เชื่อมต่อฐานข้อมูลได้บางส่วน กรุณาตรวจสอบหรือรัน SQL Schema ให้ครบถ้วน',
         tables,
         error: matRes.error?.message || bomRes.error?.message,
       };
@@ -257,6 +732,11 @@ export async function testSupabaseConnection(): Promise<{
         daily_production: false,
         stock_transactions: false,
         monthly_stock_counts: false,
+        master_branches: false,
+        monthly_production_summary: false,
+        monthly_inventory_summary: false,
+        stock_count_sessions: false,
+        system_settings: false,
       },
       error: err?.message,
     };
@@ -267,25 +747,29 @@ export async function testSupabaseConnection(): Promise<{
 // 1. MASTER MATERIALS CRUD
 // -------------------------------------------------------------
 export async function fetchMasterMaterials(): Promise<MasterMaterial[]> {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('master_materials')
-    .select('*')
-    .order('rm_code', { ascending: true });
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await withNetworkRetry<any[]>(() =>
+      supabase.from('master_materials').select('*').order('rm_code', { ascending: true })
+    );
 
-  if (error) {
-    console.error('Error fetching master_materials from Supabase:', error);
-    throw error;
+    if (error) {
+      console.warn('Notice: master_materials remote fetch unavailable, using local cache:', error.message || error);
+      return [];
+    }
+
+    return (data || []).map((row: any) => ({
+      id: row.rm_code,
+      RM_Code: row.rm_code,
+      RM_Name: row.rm_name,
+      Unit: row.unit,
+      Opening_Stock: Number(row.opening_stock) || 0,
+      Safety_Stock: Number(row.safety_stock) || 0,
+    }));
+  } catch (err: any) {
+    console.warn('Notice: Network error fetching master_materials, using local data:', err?.message || err);
+    return [];
   }
-
-  return (data || []).map((row: any) => ({
-    id: row.rm_code,
-    RM_Code: row.rm_code,
-    RM_Name: row.rm_name,
-    Unit: row.unit,
-    Opening_Stock: Number(row.opening_stock) || 0,
-    Safety_Stock: Number(row.safety_stock) || 0,
-  }));
 }
 
 export async function upsertMasterMaterial(mat: MasterMaterial): Promise<void> {
@@ -331,29 +815,33 @@ export async function updateMaterialOpeningStock(rm_code: string, newOpening: nu
 // 2. BOM RECIPE CRUD
 // -------------------------------------------------------------
 export async function fetchBOMRecipes(): Promise<BOMRecipe[]> {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('bom_recipe')
-    .select('*')
-    .order('id', { ascending: true });
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await withNetworkRetry<any[]>(() =>
+      supabase.from('bom_recipe').select('*').order('id', { ascending: true })
+    );
 
-  if (error) {
-    console.error('Error fetching bom_recipe from Supabase:', error);
-    throw error;
+    if (error) {
+      console.warn('Notice: bom_recipe remote fetch unavailable, using local cache:', error.message || error);
+      return [];
+    }
+
+    return (data || []).map((row: any) => ({
+      id: String(row.id),
+      Product_Code: row.product_code || row.product_name || '',
+      Product_Name: row.product_name || row.product_code || '',
+      RM_Code: (row.rm_code || '').trim().toUpperCase(),
+      Standard_Qty:
+        Number(
+          row.quantity_per_unit !== undefined && row.quantity_per_unit !== null
+            ? row.quantity_per_unit
+            : row.standard_qty
+        ) || 0,
+    }));
+  } catch (err: any) {
+    console.warn('Notice: Network error fetching bom_recipe, using local data:', err?.message || err);
+    return [];
   }
-
-  return (data || []).map((row: any) => ({
-    id: String(row.id),
-    Product_Code: row.product_code || row.product_name || '',
-    Product_Name: row.product_name || row.product_code || '',
-    RM_Code: (row.rm_code || '').trim().toUpperCase(),
-    Standard_Qty:
-      Number(
-        row.quantity_per_unit !== undefined && row.quantity_per_unit !== null
-          ? row.quantity_per_unit
-          : row.standard_qty
-      ) || 0,
-  }));
 }
 
 export async function upsertBOMRecipe(recipe: BOMRecipe): Promise<{ id: string | number }> {
@@ -525,30 +1013,75 @@ export async function clearSupabaseTable(
 // 3. DAILY PRODUCTION CRUD
 // -------------------------------------------------------------
 export async function fetchDailyProductions(): Promise<DailyProduction[]> {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('daily_production')
-    .select('*')
-    .order('date', { ascending: false });
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await withNetworkRetry<any[]>(() =>
+      supabase.from('daily_production').select('*').order('date', { ascending: false })
+    );
 
-  if (error) {
-    console.error('Error fetching daily_production from Supabase:', error);
-    throw error;
+    if (error) {
+      console.warn('Notice: daily_production remote fetch unavailable, using local cache:', error.message || error);
+      return [];
+    }
+
+    // Deduplicate rows from Supabase by Date + Product_Code
+    const seenMap = new Map<string, any>();
+    const duplicateIdsToDelete: any[] = [];
+
+    for (const row of (data || [])) {
+      const key = `${row.date}___${String(row.product_code || '').trim().toUpperCase()}`;
+      if (!seenMap.has(key)) {
+        seenMap.set(key, row);
+      } else {
+        // Duplicate row found in database! Mark for deletion
+        if (row.id) duplicateIdsToDelete.push(row.id);
+      }
+    }
+
+    if (duplicateIdsToDelete.length > 0) {
+      (async () => {
+        try {
+          await supabase.from('daily_production').delete().in('id', duplicateIdsToDelete);
+          console.log(`Cleaned up ${duplicateIdsToDelete.length} duplicate daily_production rows from database`);
+        } catch (e) {
+          console.warn('Error cleaning up duplicate daily_production rows:', e);
+        }
+      })();
+    }
+
+    return Array.from(seenMap.values()).map((row: any) => {
+      const dispA = Number(row.dispatch_branch_a) || 0;
+      const dispB = Number(row.dispatch_branch_b) || 0;
+      const branchDispatches =
+        row.branch_dispatches && typeof row.branch_dispatches === 'object' ? row.branch_dispatches : {};
+
+      let totalDisp = Number(row.total_dispatched);
+      if (isNaN(totalDisp) || totalDisp <= 0) {
+        if (Object.keys(branchDispatches).length > 0) {
+          totalDisp = (Object.values(branchDispatches) as any[]).reduce(
+            (s: number, v: any): number => s + (Number(v) || 0),
+            0
+          );
+        } else {
+          totalDisp = dispA + dispB;
+        }
+      }
+
+      return {
+        id: String(row.id),
+        Date: row.date,
+        Product_Code: row.product_code,
+        Produced_Qty: Number(row.produced_qty) || 0,
+        Dispatch_Branch_A: dispA,
+        Dispatch_Branch_B: dispB,
+        branch_dispatches: branchDispatches,
+        Total_Dispatched: totalDisp,
+      };
+    });
+  } catch (err: any) {
+    console.warn('Notice: Network error fetching daily_production, using local data:', err?.message || err);
+    return [];
   }
-
-  return (data || []).map((row: any) => {
-    const dispA = Number(row.dispatch_branch_a) || 0;
-    const dispB = Number(row.dispatch_branch_b) || 0;
-    return {
-      id: String(row.id),
-      Date: row.date,
-      Product_Code: row.product_code,
-      Produced_Qty: Number(row.produced_qty) || 0,
-      Dispatch_Branch_A: dispA,
-      Dispatch_Branch_B: dispB,
-      Total_Dispatched: dispA + dispB,
-    };
-  });
 }
 
 export async function saveDailyProduction(prod: DailyProduction): Promise<string> {
@@ -556,15 +1089,47 @@ export async function saveDailyProduction(prod: DailyProduction): Promise<string
   const date = prod.Date;
   const product_code = prod.Product_Code.trim().toUpperCase();
   const produced_qty = Number(prod.Produced_Qty) || 0;
-  const dispatch_branch_a = Number(prod.Dispatch_Branch_A) || 0;
-  const dispatch_branch_b = Number(prod.Dispatch_Branch_B) || 0;
+  const branch_dispatches = { ...(prod.branch_dispatches || {}) };
 
-  const payload: Record<string, any> = {
+  // Support legacy fields if present
+  if (prod.Dispatch_Branch_A !== undefined && !branch_dispatches['BRANCH_A']) {
+    branch_dispatches['BRANCH_A'] = Number(prod.Dispatch_Branch_A) || 0;
+  }
+  if (prod.Dispatch_Branch_B !== undefined && !branch_dispatches['BRANCH_B']) {
+    branch_dispatches['BRANCH_B'] = Number(prod.Dispatch_Branch_B) || 0;
+  }
+
+  let total_dispatched = Number(prod.Total_Dispatched);
+  if (isNaN(total_dispatched) || total_dispatched <= 0) {
+    total_dispatched = Object.values(branch_dispatches).reduce(
+      (s: number, v: any) => s + (Number(v) || 0),
+      0
+    );
+  }
+
+  // Modern Dynamic Payload (recommended for clean 10-table schema)
+  const modernPayload: Record<string, any> = {
     date,
     product_code,
     produced_qty,
-    dispatch_branch_a,
-    dispatch_branch_b,
+    total_dispatched,
+    branch_dispatches,
+  };
+
+  // Combined Payload (for tables that contain both dynamic JSONB and legacy columns)
+  const combinedPayload: Record<string, any> = {
+    ...modernPayload,
+    dispatch_branch_a: Number(branch_dispatches['BRANCH_A'] ?? prod.Dispatch_Branch_A) || 0,
+    dispatch_branch_b: Number(branch_dispatches['BRANCH_B'] ?? prod.Dispatch_Branch_B) || 0,
+  };
+
+  // Legacy Payload (for older schemas with only branch_a and branch_b columns)
+  const legacyOnlyPayload: Record<string, any> = {
+    date,
+    product_code,
+    produced_qty,
+    dispatch_branch_a: Number(branch_dispatches['BRANCH_A'] ?? prod.Dispatch_Branch_A) || 0,
+    dispatch_branch_b: Number(branch_dispatches['BRANCH_B'] ?? prod.Dispatch_Branch_B) || 0,
   };
 
   let numericId: number | null = null;
@@ -572,45 +1137,62 @@ export async function saveDailyProduction(prod: DailyProduction): Promise<string
     numericId = Number(prod.id);
   }
 
-  // If no numeric ID provided, check if an existing record matches date & product_code
+  // Check if an existing record matches date & product_code (single production per product per day)
   if (!numericId) {
-    const { data: existing } = await supabase
+    const { data: existingRows } = await supabase
       .from('daily_production')
       .select('id')
       .eq('date', date)
-      .eq('product_code', product_code)
-      .maybeSingle();
+      .eq('product_code', product_code);
 
-    if (existing?.id) {
-      numericId = Number(existing.id);
+    if (existingRows && existingRows.length > 0) {
+      numericId = Number(existingRows[0].id);
+      // If there are duplicate rows in Supabase for this date & product, purge the extras immediately!
+      if (existingRows.length > 1) {
+        const extraIds = existingRows.slice(1).map((r: any) => r.id);
+        await supabase.from('daily_production').delete().in('id', extraIds);
+      }
     }
   }
 
-  if (numericId) {
-    const { data, error } = await supabase
-      .from('daily_production')
-      .update(payload)
-      .eq('id', numericId)
-      .select('id')
-      .single();
-
-    if (error) {
-      console.error('Error updating daily_production in Supabase:', error);
-      throw error;
+  const trySave = async (payload: Record<string, any>) => {
+    if (numericId) {
+      const { data, error } = await supabase
+        .from('daily_production')
+        .update(payload)
+        .eq('id', numericId)
+        .select('id')
+        .single();
+      if (error) throw error;
+      return String(data?.id || numericId);
+    } else {
+      const { data, error } = await supabase
+        .from('daily_production')
+        .insert(payload)
+        .select('id')
+        .single();
+      if (error) throw error;
+      return String(data?.id);
     }
-    return String(data?.id || numericId);
-  } else {
-    const { data, error } = await supabase
-      .from('daily_production')
-      .insert(payload)
-      .select('id')
-      .single();
+  };
 
-    if (error) {
-      console.error('Error inserting daily_production in Supabase:', error);
-      throw error;
+  try {
+    // 1. First attempt: Modern dynamic payload (clean schema with branch_dispatches JSONB)
+    return await trySave(modernPayload);
+  } catch (err: any) {
+    const msg = String(err?.message || '');
+    // If the table lacks branch_dispatches / total_dispatched column, fall back to legacy columns
+    if (msg.includes('branch_dispatches') || msg.includes('total_dispatched')) {
+      console.warn('daily_production table lacks branch_dispatches, falling back to legacy schema:', msg);
+      return await trySave(legacyOnlyPayload);
     }
-    return String(data?.id);
+    // If the table has NOT NULL constraints on legacy columns, retry with combined payload
+    try {
+      return await trySave(combinedPayload);
+    } catch (retryErr: any) {
+      console.error('Error saving daily_production in Supabase:', retryErr);
+      throw retryErr;
+    }
   }
 }
 
@@ -644,26 +1226,54 @@ export async function deleteDailyProduction(idOrDate: string, productCode?: stri
 // 4. STOCK TRANSACTIONS CRUD
 // -------------------------------------------------------------
 export async function fetchStockTransactions(): Promise<StockTransaction[]> {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('stock_transactions')
-    .select('*')
-    .order('date', { ascending: false });
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await withNetworkRetry<any[]>(() =>
+      supabase.from('stock_transactions').select('*').order('date', { ascending: false })
+    );
 
-  if (error) {
-    console.error('Error fetching stock_transactions from Supabase:', error);
-    throw error;
+    if (error) {
+      console.warn('Notice: stock_transactions remote fetch unavailable, using local cache:', error.message || error);
+      return [];
+    }
+
+    // Deduplicate identical transactions from database: date + type + rm_code + qty + note
+    const seenMap = new Map<string, any>();
+    const duplicateIdsToDelete: any[] = [];
+
+    for (const row of (data || [])) {
+      const sig = `${row.date}___${row.type}___${String(row.rm_code || '').trim().toUpperCase()}___${(Number(row.qty) || 0).toFixed(3)}___${String(row.note || '').trim()}`;
+      if (!seenMap.has(sig)) {
+        seenMap.set(sig, row);
+      } else {
+        if (row.id) duplicateIdsToDelete.push(row.id);
+      }
+    }
+
+    if (duplicateIdsToDelete.length > 0) {
+      (async () => {
+        try {
+          await supabase.from('stock_transactions').delete().in('id', duplicateIdsToDelete);
+          console.log(`Cleaned up ${duplicateIdsToDelete.length} duplicate stock_transactions rows from database`);
+        } catch (e) {
+          console.warn('Error cleaning up duplicate stock_transactions rows:', e);
+        }
+      })();
+    }
+
+    return Array.from(seenMap.values()).map((row: any) => ({
+      id: String(row.id),
+      Date: row.date,
+      Type: row.type === 'Actual Usage' ? 'Actual Usage' : 'Receive',
+      RM_Code: row.rm_code,
+      Qty: Number(row.qty) || 0,
+      Recorder: row.recorder || '',
+      Note: row.note || '',
+    }));
+  } catch (err: any) {
+    console.warn('Notice: Network error fetching stock_transactions, using local data:', err?.message || err);
+    return [];
   }
-
-  return (data || []).map((row: any) => ({
-    id: String(row.id),
-    Date: row.date,
-    Type: row.type === 'Actual Usage' ? 'Actual Usage' : 'Receive',
-    RM_Code: row.rm_code,
-    Qty: Number(row.qty) || 0,
-    Recorder: row.recorder || '',
-    Note: row.note || '',
-  }));
 }
 
 export async function saveStockTransaction(tx: StockTransaction): Promise<string> {
@@ -698,16 +1308,50 @@ export async function saveStockTransaction(tx: StockTransaction): Promise<string
     note,
   };
 
-  let numericId: number | null = null;
+  let existingId: string | null = null;
   if (tx.id && /^\d+$/.test(String(tx.id))) {
-    numericId = Number(tx.id);
+    existingId = String(tx.id);
+  } else if (tx.id) {
+    const { data: byId } = await supabase
+      .from('stock_transactions')
+      .select('id')
+      .eq('id', tx.id)
+      .limit(1);
+    if (byId && byId.length > 0) {
+      existingId = String(byId[0].id);
+    }
   }
 
-  if (numericId) {
+  // If no ID match, check if this exact transaction already exists by attributes
+  if (!existingId) {
+    let checkQuery = supabase
+      .from('stock_transactions')
+      .select('id')
+      .eq('date', date)
+      .eq('type', type)
+      .eq('rm_code', rm_code)
+      .eq('qty', qty);
+
+    if (note) {
+      checkQuery = checkQuery.eq('note', note);
+    }
+
+    const { data: existingRows } = await checkQuery;
+    if (existingRows && existingRows.length > 0) {
+      existingId = String(existingRows[0].id);
+      // Clean up any extra duplicate rows in database if they were created earlier
+      if (existingRows.length > 1) {
+        const extraIds = existingRows.slice(1).map((r: any) => r.id);
+        await supabase.from('stock_transactions').delete().in('id', extraIds);
+      }
+    }
+  }
+
+  if (existingId) {
     const { data, error } = await supabase
       .from('stock_transactions')
       .update(payload)
-      .eq('id', numericId)
+      .eq('id', existingId)
       .select('id')
       .single();
 
@@ -715,7 +1359,7 @@ export async function saveStockTransaction(tx: StockTransaction): Promise<string
       console.error('Error updating stock_transactions in Supabase:', error);
       throw error;
     }
-    return String(data?.id || numericId);
+    return String(data?.id || existingId);
   } else {
     const { data, error } = await supabase
       .from('stock_transactions')
@@ -798,27 +1442,31 @@ export interface MonthlyStockCountRow {
 }
 
 export async function fetchMonthlyStockCounts(): Promise<MonthlyStockCountRow[]> {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('monthly_stock_counts')
-    .select('*')
-    .order('count_date', { ascending: false });
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await withNetworkRetry<any[]>(() =>
+      supabase.from('monthly_stock_counts').select('*').order('count_date', { ascending: false })
+    );
 
-  if (error) {
-    console.error('Error fetching monthly_stock_counts from Supabase:', error);
-    throw error;
+    if (error) {
+      console.warn('Notice: monthly_stock_counts remote fetch unavailable, using local cache:', error.message || error);
+      return [];
+    }
+
+    return (data || []).map((row: any) => ({
+      id: String(row.id),
+      count_date: row.count_date,
+      rm_code: row.rm_code,
+      system_stock: Number(row.system_stock) || 0,
+      actual_count: Number(row.actual_count) || 0,
+      discrepancy: Number(row.discrepancy) || 0,
+      recorder: row.recorder || '',
+      note: row.note || '',
+    }));
+  } catch (err: any) {
+    console.warn('Notice: Network error fetching monthly_stock_counts, using local data:', err?.message || err);
+    return [];
   }
-
-  return (data || []).map((row: any) => ({
-    id: String(row.id),
-    count_date: row.count_date,
-    rm_code: row.rm_code,
-    system_stock: Number(row.system_stock) || 0,
-    actual_count: Number(row.actual_count) || 0,
-    discrepancy: Number(row.discrepancy) || 0,
-    recorder: row.recorder || '',
-    note: row.note || '',
-  }));
 }
 
 export async function fetchMonthlyStockCountRecords(): Promise<MonthlyStockCountRecord[]> {
@@ -941,15 +1589,37 @@ export async function seedInitialDataToSupabase(
     }
 
     // 3. Insert productions
-    const prodRows = productions.map((p) => ({
-      date: p.Date,
-      product_code: p.Product_Code.trim().toUpperCase(),
-      produced_qty: Number(p.Produced_Qty) || 0,
-      dispatch_branch_a: Number(p.Dispatch_Branch_A) || 0,
-      dispatch_branch_b: Number(p.Dispatch_Branch_B) || 0,
-    }));
-    if (prodRows.length > 0) {
-      await supabase.from('daily_production').insert(prodRows);
+    const modernProdRows = productions.map((p) => {
+      const bDispatches: Record<string, number> = { ...(p.branch_dispatches || {}) };
+      if (p.Dispatch_Branch_A !== undefined && !bDispatches['BRANCH_A']) {
+        bDispatches['BRANCH_A'] = Number(p.Dispatch_Branch_A) || 0;
+      }
+      if (p.Dispatch_Branch_B !== undefined && !bDispatches['BRANCH_B']) {
+        bDispatches['BRANCH_B'] = Number(p.Dispatch_Branch_B) || 0;
+      }
+      const total = Number(p.Total_Dispatched) || Object.values(bDispatches).reduce((s: number, v: any) => s + (Number(v) || 0), 0);
+      return {
+        date: p.Date,
+        product_code: p.Product_Code.trim().toUpperCase(),
+        produced_qty: Number(p.Produced_Qty) || 0,
+        total_dispatched: total,
+        branch_dispatches: bDispatches,
+      };
+    });
+
+    if (modernProdRows.length > 0) {
+      const { error: insertErr } = await supabase.from('daily_production').insert(modernProdRows);
+      if (insertErr) {
+        // Fallback for older database tables that have dispatch_branch_a and dispatch_branch_b
+        const legacyRows = productions.map((p) => ({
+          date: p.Date,
+          product_code: p.Product_Code.trim().toUpperCase(),
+          produced_qty: Number(p.Produced_Qty) || 0,
+          dispatch_branch_a: Number(p.Dispatch_Branch_A) || 0,
+          dispatch_branch_b: Number(p.Dispatch_Branch_B) || 0,
+        }));
+        await supabase.from('daily_production').insert(legacyRows);
+      }
     }
 
     // 4. Insert transactions
@@ -1098,3 +1768,289 @@ export async function deleteMasterBranch(branchCodeOrId: string): Promise<boolea
   }
   return true;
 }
+
+// -------------------------------------------------------------
+// 7. Monthly Production Summaries (ผลรวมการผลิตแต่ละเมนูแต่ละสาขาทั้งเดือน)
+// -------------------------------------------------------------
+
+/**
+ * Fetch monthly production summaries from Supabase
+ */
+export async function fetchMonthlyProductionSummaries(month?: string): Promise<MonthlyProductionSummary[]> {
+  const supabase = getSupabaseClient();
+  try {
+    let query = supabase.from('monthly_production_summary').select('*');
+    if (month && month !== 'all') {
+      query = query.eq('month', month);
+    }
+    const { data, error } = await withNetworkRetry(() => query.order('total_produced_qty', { ascending: false }));
+    if (error) {
+      // Table may not exist yet if user hasn't run the new schema
+      console.warn('fetchMonthlyProductionSummaries notice:', error.message);
+      return [];
+    }
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      Month: row.month,
+      Product_Code: row.product_code,
+      Product_Name: row.product_name,
+      Total_Produced_Qty: Number(row.total_produced_qty) || 0,
+      branch_dispatches: row.branch_dispatches || {},
+      Total_Dispatched_Qty: Number(row.total_dispatched_qty) || 0,
+      Days_Produced_Count: Number(row.days_produced_count) || 0,
+      Dispatch_Percentage: Number(row.dispatch_percentage) || 0,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    }));
+  } catch (err: any) {
+    console.warn('fetchMonthlyProductionSummaries error:', err);
+    return [];
+  }
+}
+
+/**
+ * Save / Upsert monthly production summaries for a month
+ */
+export async function saveMonthlyProductionSummaries(
+  month: string,
+  items: MonthlyProductionSummary[]
+): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  try {
+    if (!month || !Array.isArray(items) || items.length === 0) return true;
+
+    const rows = items.map((it) => ({
+      id: it.id || `${month}_${it.Product_Code}`,
+      month: month,
+      product_code: it.Product_Code,
+      product_name: it.Product_Name,
+      total_produced_qty: it.Total_Produced_Qty,
+      branch_dispatches: it.branch_dispatches || {},
+      total_dispatched_qty: it.Total_Dispatched_Qty,
+      days_produced_count: it.Days_Produced_Count,
+      dispatch_percentage: it.Dispatch_Percentage || 0,
+      updated_at: new Date().toISOString(),
+    }));
+
+    // Delete existing records for that month to cleanly replace with new batch
+    await supabase.from('monthly_production_summary').delete().eq('month', month);
+
+    // Insert new batch
+    const { error: insertErr } = await supabase.from('monthly_production_summary').insert(rows);
+    if (insertErr) {
+      console.error('saveMonthlyProductionSummaries insert error:', insertErr);
+      throw insertErr;
+    }
+    return true;
+  } catch (err: any) {
+    console.error('saveMonthlyProductionSummaries error:', err);
+    throw err;
+  }
+}
+
+// -------------------------------------------------------------
+// 8. Monthly Inventory Closing Snapshot (สรุปสต็อกและ Variance ปิดงวดรายเดือน)
+// -------------------------------------------------------------
+
+/**
+ * Fetch monthly inventory snapshots
+ */
+export async function fetchMonthlyInventorySummaries(month?: string): Promise<MonthlyInventorySnapshot[]> {
+  const supabase = getSupabaseClient();
+  try {
+    let query = supabase.from('monthly_inventory_summary').select('*');
+    if (month && month !== 'all') {
+      query = query.eq('month', month);
+    }
+    const { data, error } = await withNetworkRetry(() => query.order('rm_code', { ascending: true }));
+    if (error) {
+      console.warn('fetchMonthlyInventorySummaries notice:', error.message);
+      return [];
+    }
+    return (data || []).map((r: any) => ({
+      id: r.id,
+      Month: r.month,
+      RM_Code: r.rm_code,
+      RM_Name: r.rm_name,
+      Unit: r.unit,
+      Opening_Stock: Number(r.opening_stock) || 0,
+      Total_Receive: Number(r.total_receive) || 0,
+      Actual_Usage: Number(r.actual_usage) || 0,
+      Expected_Usage: Number(r.expected_usage) || 0,
+      Ending_Stock: Number(r.ending_stock) || 0,
+      Variance: Number(r.variance) || 0,
+      Variance_Percentage: Number(r.variance_percentage) || 0,
+      Safety_Stock: Number(r.safety_stock) || 0,
+      Stock_Status: r.stock_status,
+      Physical_Count: r.physical_count !== null ? Number(r.physical_count) : undefined,
+      Physical_Variance: r.physical_variance !== null ? Number(r.physical_variance) : undefined,
+      Physical_Status: r.physical_status,
+      closed_at: r.closed_at,
+      closed_by: r.closed_by,
+    }));
+  } catch (err: any) {
+    console.warn('fetchMonthlyInventorySummaries error:', err);
+    return [];
+  }
+}
+
+/**
+ * Save monthly inventory closing snapshot to Supabase
+ */
+export async function saveMonthlyInventorySummaries(
+  month: string,
+  items: MonthlyStockSummary[],
+  closedBy: string = 'เจ้าหน้าที่คลัง'
+): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  try {
+    if (!month || !Array.isArray(items) || items.length === 0) return true;
+
+    const rows = items.map((it) => ({
+      id: `inv_${month}_${it.RM_Code}`,
+      month: month,
+      rm_code: it.RM_Code,
+      rm_name: it.RM_Name,
+      unit: it.Unit,
+      opening_stock: it.Opening_Stock,
+      total_receive: it.Total_Receive,
+      actual_usage: it.Actual_Usage,
+      expected_usage: it.Expected_Usage,
+      ending_stock: it.Ending_Stock,
+      variance: it.Variance,
+      variance_percentage: it.variancePercentage || 0,
+      safety_stock: it.Safety_Stock,
+      stock_status: it.Stock_Status,
+      physical_count: it.Physical_Count !== undefined ? it.Physical_Count : null,
+      physical_variance: it.Physical_Variance !== undefined ? it.Physical_Variance : null,
+      physical_status: it.Physical_Status || null,
+      closed_at: new Date().toISOString(),
+      closed_by: closedBy,
+    }));
+
+    // Delete existing snapshot for this month to prevent duplication
+    await supabase.from('monthly_inventory_summary').delete().eq('month', month);
+
+    const { error: insertErr } = await supabase.from('monthly_inventory_summary').insert(rows);
+    if (insertErr) {
+      console.error('saveMonthlyInventorySummaries insert error:', insertErr);
+      throw insertErr;
+    }
+    return true;
+  } catch (err: any) {
+    console.error('saveMonthlyInventorySummaries error:', err);
+    throw err;
+  }
+}
+
+// -------------------------------------------------------------
+// 9. Stock Count Sessions (รอบเอกสารการตรวจนับสต็อกสิ้นเดือน)
+// -------------------------------------------------------------
+
+/**
+ * Fetch stock count session headers
+ */
+export async function fetchStockCountSessions(): Promise<StockCountSessionHeader[]> {
+  const supabase = getSupabaseClient();
+  try {
+    const { data, error } = await withNetworkRetry(() =>
+      supabase.from('stock_count_sessions').select('*').order('count_date', { ascending: false })
+    );
+    if (error) {
+      console.warn('fetchStockCountSessions notice:', error.message);
+      return [];
+    }
+    return (data || []).map((r: any) => ({
+      id: r.id,
+      Month: r.month,
+      Count_Date: r.count_date,
+      Counted_By: r.counted_by,
+      Total_Items_Counted: Number(r.total_items_counted) || 0,
+      Discrepancy_Items_Count: Number(r.discrepancy_items_count) || 0,
+      Status: r.status || 'completed',
+      Note: r.note,
+      created_at: r.created_at,
+    }));
+  } catch (err: any) {
+    console.warn('fetchStockCountSessions error:', err);
+    return [];
+  }
+}
+
+/**
+ * Save or update a stock count session header
+ */
+export async function saveStockCountSession(session: StockCountSessionHeader): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  try {
+    const payload = {
+      id: session.id,
+      month: session.Month,
+      count_date: session.Count_Date,
+      counted_by: session.Counted_By,
+      total_items_counted: session.Total_Items_Counted,
+      discrepancy_items_count: session.Discrepancy_Items_Count,
+      status: session.Status,
+      note: session.Note || '',
+    };
+
+    const { error } = await supabase.from('stock_count_sessions').upsert(payload);
+    if (error) {
+      console.error('saveStockCountSession error:', error);
+      throw error;
+    }
+    return true;
+  } catch (err: any) {
+    console.error('saveStockCountSession error:', err);
+    throw err;
+  }
+}
+
+// -------------------------------------------------------------
+// 10. System Settings (การตั้งค่าระบบส่วนกลาง)
+// -------------------------------------------------------------
+
+/**
+ * Fetch system settings as key-value map
+ */
+export async function fetchSystemSettings(): Promise<Record<string, string>> {
+  const supabase = getSupabaseClient();
+  try {
+    const { data, error } = await withNetworkRetry(() => supabase.from('system_settings').select('*'));
+    if (error) {
+      console.warn('fetchSystemSettings notice:', error.message);
+      return {};
+    }
+    const map: Record<string, string> = {};
+    (data || []).forEach((row: any) => {
+      if (row.key) map[row.key] = row.value || '';
+    });
+    return map;
+  } catch (err: any) {
+    console.warn('fetchSystemSettings error:', err);
+    return {};
+  }
+}
+
+/**
+ * Save a system setting key-value
+ */
+export async function saveSystemSetting(key: string, value: string): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  try {
+    const { error } = await supabase.from('system_settings').upsert({
+      key,
+      value,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) {
+      console.error('saveSystemSetting error:', error);
+      throw error;
+    }
+    return true;
+  } catch (err: any) {
+    console.error('saveSystemSetting error:', err);
+    throw err;
+  }
+}
+

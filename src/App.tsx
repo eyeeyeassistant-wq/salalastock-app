@@ -225,12 +225,12 @@ export default function App() {
 
       if (connRes.success) {
         const [mats, recs, prods, txs, counts, branchList] = await Promise.all([
-          fetchMasterMaterials().catch(() => [] as MasterMaterial[]),
-          fetchBOMRecipes().catch(() => [] as BOMRecipe[]),
-          fetchDailyProductions().catch(() => [] as DailyProduction[]),
-          fetchStockTransactions().catch(() => [] as StockTransaction[]),
-          fetchMonthlyStockCountRecords().catch(() => [] as MonthlyStockCountRecord[]),
-          fetchMasterBranches().catch(() => [] as MasterBranch[]),
+          connRes.tables.master_materials ? fetchMasterMaterials() : Promise.resolve([] as MasterMaterial[]),
+          connRes.tables.bom_recipe ? fetchBOMRecipes() : Promise.resolve([] as BOMRecipe[]),
+          connRes.tables.daily_production ? fetchDailyProductions() : Promise.resolve([] as DailyProduction[]),
+          connRes.tables.stock_transactions ? fetchStockTransactions() : Promise.resolve([] as StockTransaction[]),
+          connRes.tables.monthly_stock_counts ? fetchMonthlyStockCountRecords() : Promise.resolve([] as MonthlyStockCountRecord[]),
+          connRes.tables.master_branches ? fetchMasterBranches() : Promise.resolve([] as MasterBranch[]),
         ]);
 
         // Safely retrieve current local storage fallback data
@@ -296,35 +296,65 @@ export default function App() {
         });
         const finalRecs = sanitizeRecipes(Array.from(recsMap.values()));
 
-        // 3. Merge Daily Productions
-        const prodsMap = new Map<string, DailyProduction>();
-        (prods || []).forEach((p) => {
-          const key = p.id || `${p.Date}_${p.Product_Code}`;
-          prodsMap.set(key, p);
-        });
-        (localProds || []).forEach((p) => {
-          const key = p.id || `${p.Date}_${p.Product_Code}`;
-          if (!prodsMap.has(key)) {
-            prodsMap.set(key, p);
-            saveDailyProduction(p).catch(console.warn);
-          }
-        });
-        const finalProds = sanitizeProductions(Array.from(prodsMap.values()));
+        // 3. Merge Daily Productions (Remote is source of truth, key strictly by Date + Product_Code)
+        const prodMap = new Map<string, DailyProduction>();
 
-        // 4. Merge Stock Transactions
-        const txsMap = new Map<string, StockTransaction>();
-        (txs || []).forEach((t) => {
-          if (t.id) txsMap.set(t.id, t);
-        });
-        (localTxs || []).forEach((t) => {
-          if (t.id && !txsMap.has(t.id)) {
-            txsMap.set(t.id, t);
-            saveStockTransaction(t).catch(console.warn);
+        // Remote database is primary source of truth
+        (prods || []).forEach((p) => {
+          const key = `${p.Date}___${(p.Product_Code || '').trim().toUpperCase()}`;
+          if (!prodMap.has(key)) {
+            prodMap.set(key, p);
           }
         });
-        const finalTxs = sanitizeTransactions(
-          Array.from(txsMap.values()).length > 0 ? Array.from(txsMap.values()) : (localTxs.length > 0 ? localTxs : txs)
-        );
+
+        // Only add local productions if they are truly not yet in the remote database
+        (localProds || []).forEach((lp) => {
+          const key = `${lp.Date}___${(lp.Product_Code || '').trim().toUpperCase()}`;
+          if (!prodMap.has(key)) {
+            prodMap.set(key, lp);
+            saveDailyProduction(lp).catch(console.warn);
+          } else {
+            // Enrich with any local branch dispatches that remote might lack
+            const existing = prodMap.get(key)!;
+            if (
+              lp.branch_dispatches &&
+              Object.keys(lp.branch_dispatches).length > 0 &&
+              (!existing.branch_dispatches || Object.keys(existing.branch_dispatches).length === 0)
+            ) {
+              const enriched = { ...existing, branch_dispatches: lp.branch_dispatches };
+              prodMap.set(key, enriched);
+              saveDailyProduction(enriched).catch(console.warn);
+            }
+          }
+        });
+        const finalProds = sanitizeProductions(Array.from(prodMap.values()));
+
+        // 4. Merge Stock Transactions (Deduplicate and prevent duplicate re-uploads)
+        const finalTxsList: StockTransaction[] = [];
+        const seenTxSigs = new Set<string>();
+        const seenTxIds = new Set<string>();
+
+        // Remote transactions are source of truth
+        (txs || []).forEach((t) => {
+          const sig = `${t.Date}___${t.Type}___${(t.RM_Code || '').trim().toUpperCase()}___${(Number(t.Qty) || 0).toFixed(3)}___${(t.Note || '').trim()}`;
+          if (!seenTxSigs.has(sig) && (!t.id || !seenTxIds.has(String(t.id)))) {
+            seenTxSigs.add(sig);
+            if (t.id) seenTxIds.add(String(t.id));
+            finalTxsList.push(t);
+          }
+        });
+
+        // Local transactions: only add if signature does not already exist in remote!
+        (localTxs || []).forEach((lt) => {
+          const sig = `${lt.Date}___${lt.Type}___${(lt.RM_Code || '').trim().toUpperCase()}___${(Number(lt.Qty) || 0).toFixed(3)}___${(lt.Note || '').trim()}`;
+          if (!seenTxSigs.has(sig) && (!lt.id || !seenTxIds.has(String(lt.id)))) {
+            seenTxSigs.add(sig);
+            if (lt.id) seenTxIds.add(String(lt.id));
+            finalTxsList.push(lt);
+            saveStockTransaction(lt).catch(console.warn);
+          }
+        });
+        const finalTxs = sanitizeTransactions(finalTxsList);
 
         // 5. Merge Monthly Stock Counts
         const finalCounts = counts && counts.length > 0 ? counts : localCounts;
@@ -1030,9 +1060,11 @@ export default function App() {
       const savedId = await saveStockTransaction(fullTx);
       if (savedId) {
         fullTx = { ...fullTx, id: savedId };
-        setTransactions((prev) =>
-          prev.map((t) => (t === fullTx || (t.id && t.id === fullTx.id) ? { ...t, id: savedId } : t))
-        );
+        setTransactions((prev) => {
+          const updated = prev.map((t) => (t === fullTx || (t.id && t.id === fullTx.id) ? { ...t, id: savedId } : t));
+          localStorage.setItem('stock_transactions', JSON.stringify(updated));
+          return updated;
+        });
       }
       showNotification(`🟢 บันทึก ${fullTx.Type} (${fullTx.RM_Code} จำนวน ${fullTx.Qty}) ลงฐานข้อมูลกลางสำเร็จ`);
     } catch (err: any) {
@@ -1080,7 +1112,11 @@ export default function App() {
       // If autoDeduct is enabled on edit:
       // Remove previously auto-deducted transactions for this batch and replace with new calculated usage
       if (autoDeduct && oldProd) {
+        // Delete previous auto-deductions from Supabase as well
+        deleteTransactionsForProduction(oldProd.id, oldProd.Date, oldProd.Product_Code).catch(console.warn);
+
         const filteredTxs = nextTxs.filter((t) => {
+          if (oldProd.id && t.productionId === oldProd.id) return false;
           const isOldAuto =
             t.Date === oldProd.Date &&
             t.Type === 'Actual Usage' &&
@@ -1099,7 +1135,7 @@ export default function App() {
           Note: `ตัดสต็อกตามยอดผลิต ${fullProd.Product_Code} (${fullProd.Produced_Qty} ชิ้น)`,
         }));
 
-        nextTxs = [...newAutoTxs, ...filteredTxs];
+        nextTxs = sanitizeTransactions([...newAutoTxs, ...filteredTxs]);
         setTransactions(nextTxs);
         localStorage.setItem('stock_transactions', JSON.stringify(nextTxs));
         for (const atx of newAutoTxs) {
@@ -1112,9 +1148,35 @@ export default function App() {
         showNotification(`✅ แก้ไขข้อมูลการผลิต ${fullProd.Product_Code} วันที่ ${fullProd.Date} สำเร็จ`);
       }
     } else {
-      nextProds = [fullProd, ...nextProds];
+      // Check if a production entry for this exact Date + Product_Code already exists
+      const existingIdx = nextProds.findIndex(
+        (p) =>
+          p.Date === fullProd.Date &&
+          (p.Product_Code || '').trim().toUpperCase() === pCode
+      );
+
+      if (existingIdx !== -1) {
+        const existingProd = nextProds[existingIdx];
+        fullProd.id = existingProd.id || fullProd.id;
+        nextProds[existingIdx] = fullProd;
+      } else {
+        nextProds = [fullProd, ...nextProds];
+      }
 
       if (autoDeduct) {
+        // Delete previous auto-deductions for this batch from database and state
+        deleteTransactionsForProduction(fullProd.id, fullProd.Date, fullProd.Product_Code).catch(console.warn);
+
+        nextTxs = nextTxs.filter((t) => {
+          if (fullProd.id && t.productionId === fullProd.id) return false;
+          const isOldAuto =
+            t.Date === fullProd.Date &&
+            t.Type === 'Actual Usage' &&
+            (t.Recorder?.includes('Auto') || t.Note?.includes('ตัดสต็อก')) &&
+            (t.Note?.includes(pCode) || t.Note?.includes(fullProd.Product_Code));
+          return !isOldAuto;
+        });
+
         const newAutoTxs: StockTransaction[] = productRecipes.map((r) => ({
           productionId: fullProd.id,
           Date: fullProd.Date,
@@ -1126,7 +1188,7 @@ export default function App() {
         }));
 
         if (newAutoTxs.length > 0) {
-          nextTxs = [...newAutoTxs, ...nextTxs];
+          nextTxs = sanitizeTransactions([...newAutoTxs, ...nextTxs]);
           setTransactions(nextTxs);
           localStorage.setItem('stock_transactions', JSON.stringify(nextTxs));
           for (const atx of newAutoTxs) {
@@ -1150,9 +1212,11 @@ export default function App() {
       const savedProdId = await saveDailyProduction(fullProd);
       if (savedProdId) {
         fullProd = { ...fullProd, id: savedProdId };
-        setProductions((prev) =>
-          prev.map((p) => (p === fullProd || (p.id && p.id === fullProd.id) ? { ...p, id: savedProdId } : p))
-        );
+        setProductions((prev) => {
+          const updated = prev.map((p) => (p === fullProd || (p.id && p.id === fullProd.id) ? { ...p, id: savedProdId } : p));
+          localStorage.setItem('stock_productions', JSON.stringify(updated));
+          return updated;
+        });
       }
       showNotification(
         `🟢 บันทึกยอดผลิต ${fullProd.Product_Code} (${fullProd.Produced_Qty} ชิ้น) ลงฐานข้อมูลกลางสำเร็จ`
@@ -1179,7 +1243,12 @@ export default function App() {
       return;
     }
 
-    // Filter out previous auto-deductions for this batch to prevent double counting
+    // 1. Delete previous auto-deductions for this batch from database
+    deleteTransactionsForProduction(prod.id, prod.Date, prod.Product_Code).catch((err) => {
+      console.warn('Could not clean up old auto deductions from remote:', err);
+    });
+
+    // 2. Filter out previous auto-deductions for this batch to prevent double counting in local state
     const filteredTxs = transactions.filter((t) => {
       if (prod.id && t.productionId === prod.id) return false;
       const isOldAuto =
@@ -1200,7 +1269,7 @@ export default function App() {
       Note: `ตัดสต็อกตามยอดผลิต ${prod.Product_Code} (${prod.Produced_Qty} ชิ้น)`,
     }));
 
-    const nextTxs = [...newAutoTxs, ...filteredTxs];
+    const nextTxs = sanitizeTransactions([...newAutoTxs, ...filteredTxs]);
     setTransactions(nextTxs);
     localStorage.setItem('stock_transactions', JSON.stringify(nextTxs));
     for (const atx of newAutoTxs) {
@@ -1371,6 +1440,7 @@ export default function App() {
             onOpenFormulaGuide={() => setIsFormulaModalOpen(true)}
             onOpenStockCountModal={() => setActiveTab('stock-count')}
             onSelectMaterialDetail={(code) => setSelectedMaterialDetail(code)}
+            onShowNotification={showNotification}
           />
         )}
 
@@ -1392,6 +1462,7 @@ export default function App() {
             onDeleteProduction={(target, deleteLinked) =>
               handleDeleteProduction(target, deleteLinked !== false)
             }
+            onShowNotification={showNotification}
           />
         )}
 

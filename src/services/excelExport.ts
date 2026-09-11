@@ -6,6 +6,8 @@ import {
   StockTransaction,
   MonthlyStockCountRecord,
   MonthlyStockSummary,
+  MonthlyProductionSummary,
+  MasterBranch,
 } from '../types/stock';
 
 export interface FullStockData {
@@ -195,3 +197,52 @@ export async function parseExcelImport(file: File): Promise<Partial<FullStockDat
 
   return result;
 }
+
+/**
+ * Export Monthly Production & Branch Dispatches Summary per Menu to Excel (.xlsx)
+ * ผลรวมการผลิตแต่ละเมนูแต่ละสาขาทั้งเดือน
+ */
+export function exportMonthlyProductionSummaryToExcel(
+  summaries: MonthlyProductionSummary[],
+  branches: MasterBranch[] = [],
+  periodLabel: string = 'Monthly'
+) {
+  const wb = XLSX.utils.book_new();
+
+  const activeBranches = branches.filter((b) => b.is_active !== false);
+  const branchList = activeBranches.length > 0
+    ? activeBranches
+    : [
+        { branch_code: 'BRANCH_A', branch_name: 'สาขา A' },
+        { branch_code: 'BRANCH_B', branch_name: 'สาขา B' },
+      ];
+
+  const rows = summaries.map((s, idx) => {
+    const row: Record<string, any> = {
+      'ลำดับ (No.)': idx + 1,
+      'เดือน (Month)': s.Month,
+      'รหัสสินค้า (Product_Code)': s.Product_Code,
+      'ชื่อเมนู/สินค้า (Product_Name)': s.Product_Name,
+      'ยอดผลิตรวมทั้งเดือน (Produced_Qty)': s.Total_Produced_Qty,
+    };
+
+    branchList.forEach((b) => {
+      const dispatchQty = s.branch_dispatches?.[b.branch_code] ?? 0;
+      row[`ส่ง ${b.branch_name} (${b.branch_code})`] = dispatchQty;
+    });
+
+    row['รวมยอดจัดส่งทุกสาขา (Total_Dispatched)'] = s.Total_Dispatched_Qty;
+    row['จำนวนวันที่ผลิต (Days_Produced)'] = s.Days_Produced_Count;
+    row['สัดส่วนกระจายสินค้า (% Dispatched)'] = `${s.Dispatch_Percentage || 0}%`;
+
+    return row;
+  });
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws, 'Monthly_Production_Summary');
+
+  const cleanPeriod = periodLabel.replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_');
+  const fileName = `Monthly_Production_Summary_${cleanPeriod}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+}
+

@@ -222,17 +222,25 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
 
   // 1. Daily Production & Dispatch Trend
   const dailyTrendData = useMemo(() => {
-    const mapByDate = new Map<string, { date: string; produced: number; dispatchA: number; dispatchB: number }>();
+    const mapByDate = new Map<string, { date: string; produced: number; dispatched: number }>();
 
     filteredProductions.forEach((p) => {
       const d = p.Date;
       if (!mapByDate.has(d)) {
-        mapByDate.set(d, { date: d, produced: 0, dispatchA: 0, dispatchB: 0 });
+        mapByDate.set(d, { date: d, produced: 0, dispatched: 0 });
       }
       const item = mapByDate.get(d)!;
       item.produced += Number(p.Produced_Qty) || 0;
-      item.dispatchA += Number(p.Dispatch_Branch_A) || 0;
-      item.dispatchB += Number(p.Dispatch_Branch_B) || 0;
+
+      let disp = 0;
+      if (p.branch_dispatches && Object.keys(p.branch_dispatches).length > 0) {
+        disp = (Object.values(p.branch_dispatches) as any[]).reduce((s: number, v: any): number => s + (Number(v) || 0), 0);
+      } else if (p.Total_Dispatched !== undefined && Number(p.Total_Dispatched) > 0) {
+        disp = Number(p.Total_Dispatched) || 0;
+      } else {
+        disp = (Number(p.Dispatch_Branch_A) || 0) + (Number(p.Dispatch_Branch_B) || 0);
+      }
+      item.dispatched += disp;
     });
 
     return Array.from(mapByDate.values()).sort((a, b) => a.date.localeCompare(b.date));
@@ -269,51 +277,67 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#14B8A6', '#6366F1'];
 
-  // 4. Branch Distribution Chart Data
-  const branchDispatchPieData = useMemo(() => {
-    const branchMap = new Map<string, { name: string; value: number }>();
+  // 4. Branch Distribution & Performance Data (Dynamic for all branches)
+  const branchSummaries = useMemo(() => {
+    const map = new Map<string, { code: string; name: string; totalQty: number }>();
 
+    // Initialize with all active master branches
     if (branches && branches.length > 0) {
-      branches.forEach((b) => {
-        branchMap.set(b.branch_code, { name: b.branch_name, value: 0 });
+      branches.filter((b) => b.is_active !== false).forEach((b) => {
+        map.set(b.branch_code, { code: b.branch_code, name: b.branch_name, totalQty: 0 });
       });
     } else {
-      branchMap.set('BRANCH_A', { name: 'สาขา A', value: 0 });
-      branchMap.set('BRANCH_B', { name: 'สาขา B', value: 0 });
+      map.set('BRANCH_A', { code: 'BRANCH_A', name: 'สาขา A', totalQty: 0 });
+      map.set('BRANCH_B', { code: 'BRANCH_B', name: 'สาขา B', totalQty: 0 });
     }
 
     filteredProductions.forEach((p) => {
-      if (branchMap.has('BRANCH_A')) {
-        branchMap.get('BRANCH_A')!.value += Number(p.Dispatch_Branch_A) || 0;
-      }
-      if (branchMap.has('BRANCH_B')) {
-        branchMap.get('BRANCH_B')!.value += Number(p.Dispatch_Branch_B) || 0;
-      }
+      const hasCustomDispatches = p.branch_dispatches && Object.keys(p.branch_dispatches).length > 0;
 
-      if (p.branch_dispatches) {
-        Object.entries(p.branch_dispatches).forEach(([code, qty]) => {
-          if (code === 'BRANCH_A' || code === 'BRANCH_B') return;
+      if (hasCustomDispatches) {
+        Object.entries(p.branch_dispatches!).forEach(([code, qty]) => {
           const num = Number(qty) || 0;
-          if (branchMap.has(code)) {
-            branchMap.get(code)!.value += num;
+          if (map.has(code)) {
+            map.get(code)!.totalQty += num;
           } else {
-            const matched = branches.find((b) => b.branch_code === code);
-            branchMap.set(code, {
+            const matched = branches?.find((b) => b.branch_code === code);
+            map.set(code, {
+              code,
               name: matched ? matched.branch_name : code,
-              value: num,
+              totalQty: num,
             });
           }
         });
+      } else {
+        // Legacy fallback
+        const dispA = Number(p.Dispatch_Branch_A) || 0;
+        const dispB = Number(p.Dispatch_Branch_B) || 0;
+        if (map.has('BRANCH_A')) {
+          map.get('BRANCH_A')!.totalQty += dispA;
+        }
+        if (map.has('BRANCH_B')) {
+          map.get('BRANCH_B')!.totalQty += dispB;
+        }
       }
     });
 
-    return Array.from(branchMap.values())
-      .filter((d) => d.value > 0)
-      .map((d, index) => ({
-        ...d,
-        color: COLORS[index % COLORS.length],
+    const sumAll = totalDispatched > 0 ? totalDispatched : 1;
+    return Array.from(map.values()).map((b, index) => ({
+      ...b,
+      percent: totalDispatched > 0 ? ((b.totalQty / sumAll) * 100).toFixed(1) : '0.0',
+      color: COLORS[index % COLORS.length],
+    }));
+  }, [branches, filteredProductions, totalDispatched]);
+
+  const branchDispatchPieData = useMemo(() => {
+    return branchSummaries
+      .filter((d) => d.totalQty > 0)
+      .map((d) => ({
+        name: d.name,
+        value: d.totalQty,
+        color: d.color,
       }));
-  }, [branches, filteredProductions, totalDispatchA, totalDispatchB]);
+  }, [branchSummaries]);
 
   // Export CSV
   const handleExportCSV = () => {
@@ -483,33 +507,34 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
         </div>
 
         {/* KPI 2: Branch Dispatches */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              จัดส่งแยกตามสาขา
-            </span>
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-              <Truck className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline justify-between">
-            <div>
-              <div className="text-xs font-semibold text-slate-500">สาขา A</div>
-              <div className="text-lg font-bold text-slate-900 font-mono">
-                {totalDispatchA.toLocaleString()} <span className="text-xs font-normal text-slate-400">ชิ้น</span>
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs relative overflow-hidden flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                จัดส่งแยกตามสาขา ({branchSummaries.length} สาขา)
+              </span>
+              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                <Truck className="w-4 h-4" />
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-xs font-semibold text-slate-500">สาขา B</div>
-              <div className="text-lg font-bold text-slate-900 font-mono">
-                {totalDispatchB.toLocaleString()} <span className="text-xs font-normal text-slate-400">ชิ้น</span>
-              </div>
+            <div className="mt-3 grid grid-cols-2 gap-2.5 max-h-24 overflow-y-auto pr-1">
+              {branchSummaries.map((b) => (
+                <div key={b.code} className="min-w-0">
+                  <div className="text-[11px] font-semibold text-slate-600 truncate" title={b.name}>
+                    {b.name}
+                  </div>
+                  <div className="text-sm sm:text-base font-bold text-slate-900 font-mono">
+                    {b.totalQty.toLocaleString()}{' '}
+                    <span className="text-[10px] font-normal text-slate-400">({b.percent}%)</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-          <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
-            <span>สัดส่วนการส่ง:</span>
-            <span className="font-semibold text-indigo-700">
-              A ({totalDispatched > 0 ? ((totalDispatchA / totalDispatched) * 100).toFixed(0) : 0}%) / B ({totalDispatched > 0 ? ((totalDispatchB / totalDispatched) * 100).toFixed(0) : 0}%)
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
+            <span>ยอดส่งรวมทุกสาขา:</span>
+            <span className="font-semibold text-indigo-700 font-mono">
+              {totalDispatched.toLocaleString()} ชิ้น
             </span>
           </div>
         </div>
@@ -643,16 +668,14 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
                       formatter={(val: any, name: any) => {
                         const labels: any = {
                           produced: 'ยอดผลิตรวม',
-                          dispatchA: 'ส่งสาขา A',
-                          dispatchB: 'ส่งสาขา B',
+                          dispatched: 'ยอดจัดส่งรวมทุกสาขา',
                         };
                         return [`${val} ชิ้น`, labels[name] || name];
                       }}
                     />
                     <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
                     <Bar dataKey="produced" name="ยอดผลิตรวม (Produced)" fill="#3B82F6" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="dispatchA" name="ส่งสาขา A" fill="#10B981" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="dispatchB" name="ส่งสาขา B" fill="#6366F1" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="dispatched" name="ยอดจัดส่งรวมทุกสาขา (Dispatched)" fill="#10B981" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
@@ -663,7 +686,7 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
               )}
             </div>
             <p className="text-xs text-slate-500 italic text-center">
-              * กราฟแสดงยอดผลิตจริงเทียบกับยอดกระจายสินค้าไปสาขา A และสาขา B ในแต่ละวัน
+              * กราฟแสดงยอดผลิตจริงเทียบกับยอดกระจายสินค้าไปสาขาต่างๆ ในแต่ละวัน
             </p>
           </div>
         )}
@@ -766,7 +789,7 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
             <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200">
               <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                 <Building2 className="w-4 h-4 text-emerald-600" />
-                สัดส่วนยอดจัดส่ง สาขา A vs สาขา B
+                สัดส่วนยอดจัดส่งแยกตามสาขา
               </h4>
               <div className="h-56">
                 {branchDispatchPieData.length > 0 ? (
@@ -809,72 +832,59 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
         )}
       </div>
 
-      {/* Branch Performance Comparison Scorecard */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Branch A Card */}
-        <div className="bg-gradient-to-br from-blue-50/70 to-white p-5 rounded-2xl border border-blue-200/80 shadow-xs">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs">
-                A
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-slate-900">สรุปการจัดส่ง สาขา A</h4>
-                <p className="text-[11px] text-slate-500">ยอดกระจายสินค้าประจำงวด</p>
-              </div>
-            </div>
-            <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-blue-100 text-blue-800">
-              สัดส่วน {totalDispatched > 0 ? ((totalDispatchA / totalDispatched) * 100).toFixed(1) : '0.0'}%
-            </span>
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-3 text-center bg-white p-3 rounded-xl border border-blue-100">
-            <div>
-              <div className="text-[11px] text-slate-500">ยอดส่งสินค้ารวม</div>
-              <div className="text-lg font-bold text-blue-700 font-mono">
-                {totalDispatchA.toLocaleString()} <span className="text-xs font-normal text-slate-400">ชิ้น</span>
-              </div>
-            </div>
-            <div>
-              <div className="text-[11px] text-slate-500">สัดส่วนจากยอดส่งรวม</div>
-              <div className="text-lg font-bold text-slate-900 font-mono">
-                {totalDispatched > 0 ? ((totalDispatchA / totalDispatched) * 100).toFixed(0) : 0}%
-              </div>
-            </div>
-          </div>
+      {/* Branch Performance Comparison Scorecard (Dynamic for all branches) */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-indigo-600" />
+            <span>สรุปยอดจัดส่งแยกตามสาขา ({branchSummaries.length} สาขา)</span>
+          </h3>
         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {branchSummaries.map((b, idx) => (
+            <div
+              key={b.code}
+              className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-indigo-200 transition-colors"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div
+                    className="w-8 h-8 rounded-lg text-white flex items-center justify-center font-bold text-xs shrink-0"
+                    style={{ backgroundColor: b.color }}
+                  >
+                    {idx + 1}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-bold text-slate-900 truncate" title={b.name}>
+                      {b.name}
+                    </h4>
+                    <p className="text-[11px] text-slate-500 font-mono">{b.code}</p>
+                  </div>
+                </div>
+                <span
+                  className="text-xs font-mono font-bold px-2 py-0.5 rounded-md shrink-0"
+                  style={{ backgroundColor: `${b.color}15`, color: b.color }}
+                >
+                  สัดส่วน {b.percent}%
+                </span>
+              </div>
 
-        {/* Branch B Card */}
-        <div className="bg-gradient-to-br from-indigo-50/70 to-white p-5 rounded-2xl border border-indigo-200/80 shadow-xs">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs">
-                B
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-slate-900">สรุปการจัดส่ง สาขา B</h4>
-                <p className="text-[11px] text-slate-500">ยอดกระจายสินค้าประจำงวด</p>
-              </div>
-            </div>
-            <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800">
-              สัดส่วน {totalDispatched > 0 ? ((totalDispatchB / totalDispatched) * 100).toFixed(1) : '0.0'}%
-            </span>
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-3 text-center bg-white p-3 rounded-xl border border-indigo-100">
-            <div>
-              <div className="text-[11px] text-slate-500">ยอดส่งสินค้ารวม</div>
-              <div className="text-lg font-bold text-indigo-700 font-mono">
-                {totalDispatchB.toLocaleString()} <span className="text-xs font-normal text-slate-400">ชิ้น</span>
+              <div className="mt-4 grid grid-cols-2 gap-3 text-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <div>
+                  <div className="text-[11px] text-slate-500">ยอดจัดส่งรวม</div>
+                  <div className="text-base sm:text-lg font-bold text-slate-900 font-mono">
+                    {b.totalQty.toLocaleString()} <span className="text-xs font-normal text-slate-400">ชิ้น</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-slate-500">สัดส่วนของยอดส่ง</div>
+                  <div className="text-base sm:text-lg font-bold font-mono" style={{ color: b.color }}>
+                    {b.percent}%
+                  </div>
+                </div>
               </div>
             </div>
-            <div>
-              <div className="text-[11px] text-slate-500">สัดส่วนจากยอดส่งรวม</div>
-              <div className="text-lg font-bold text-slate-900 font-mono">
-                {totalDispatched > 0 ? ((totalDispatchB / totalDispatched) * 100).toFixed(0) : 0}%
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
 

@@ -31,7 +31,10 @@ import {
   ChevronRight,
   Scale,
   Sparkles,
+  Database,
+  RefreshCw,
 } from 'lucide-react';
+import { saveMonthlyInventorySummaries } from '../services/supabase';
 
 interface MonthlySummaryTabProps {
   summaries: MonthlyStockSummary[];
@@ -43,6 +46,7 @@ interface MonthlySummaryTabProps {
   onOpenFormulaGuide: () => void;
   onOpenStockCountModal?: () => void;
   onSelectMaterialDetail: (rmCode: string) => void;
+  onShowNotification?: (msg: string) => void;
 }
 
 const MONTH_NAMES_TH: { [key: string]: string } = {
@@ -70,6 +74,7 @@ export const MonthlySummaryTab: React.FC<MonthlySummaryTabProps> = ({
   onOpenFormulaGuide,
   onOpenStockCountModal,
   onSelectMaterialDetail,
+  onShowNotification,
 }) => {
   // Available months
   const availableMonths = useMemo(
@@ -82,6 +87,7 @@ export const MonthlySummaryTab: React.FC<MonthlySummaryTabProps> = ({
   const [statusFilter, setStatusFilter] = useState<'all' | 'lowStock' | 'overused' | 'normal'>('all');
   const [sortField, setSortField] = useState<keyof MonthlyStockSummary>('RM_Code');
   const [sortAsc, setSortAsc] = useState(true);
+  const [isSavingInventory, setIsSavingInventory] = useState<boolean>(false);
 
   // Month navigation helper
   const handlePrevMonth = () => {
@@ -191,6 +197,26 @@ export const MonthlySummaryTab: React.FC<MonthlySummaryTabProps> = ({
     return m ? m.Safety_Stock : 0;
   };
 
+  const handleSaveInventoryToSupabase = async () => {
+    if (selectedMonth === 'all') {
+      onShowNotification?.('⚠️ กรุณาเลือกเดือนที่ต้องการบันทึก เช่น 2026-03 ก่อนบันทึกสรุปสต๊อกลงฐานข้อมูล');
+      return;
+    }
+    setIsSavingInventory(true);
+    try {
+      const ok = await saveMonthlyInventorySummaries(selectedMonth, activeSummaries);
+      if (ok) {
+        onShowNotification?.(`✅ บันทึกสรุปสต๊อกสิ้นเดือน ${selectedMonth} ลงตาราง monthly_inventory_summary สำเร็จ (${activeSummaries.length} วัตถุดิบ)`);
+      } else {
+        onShowNotification?.('⚠️ ไม่สามารถบันทึกได้ กรุณาตรวจสอบการเชื่อมต่อ Supabase');
+      }
+    } catch (err: any) {
+      onShowNotification?.(`❌ เกิดข้อผิดพลาดในการบันทึก: ${err.message}`);
+    } finally {
+      setIsSavingInventory(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       {/* Top Banner Alert if low stock exists */}
@@ -285,6 +311,21 @@ export const MonthlySummaryTab: React.FC<MonthlySummaryTabProps> = ({
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
               <span className="hidden sm:inline">ดาวน์โหลด Excel</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSaveInventoryToSupabase}
+              disabled={isSavingInventory || selectedMonth === 'all'}
+              title={selectedMonth === 'all' ? 'กรุณาเลือกเดือนที่ต้องการบันทึก' : 'บันทึกข้อมูลสรุปสต๊อกเดือนนี้ลงตาราง monthly_inventory_summary บน Supabase'}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-xs transition-colors"
+            >
+              {isSavingInventory ? (
+                <RefreshCw className="w-4 h-4 animate-spin text-indigo-600" />
+              ) : (
+                <Database className="w-4 h-4 text-indigo-600" />
+              )}
+              <span className="hidden sm:inline">บันทึกสต็อกลง Supabase</span>
             </button>
           </div>
         </div>

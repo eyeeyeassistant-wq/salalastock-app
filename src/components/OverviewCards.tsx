@@ -120,7 +120,7 @@ export const OverviewCards: React.FC<OverviewCardsProps> = ({
           </div>
         </div>
         <div className="text-2xl sm:text-3xl font-bold text-slate-900">{totalDispatched.toLocaleString()}</div>
-        <div className="text-[11px] text-slate-400 mt-1">สาขา A + สาขา B</div>
+        <div className="text-[11px] text-slate-400 mt-1">ยอดส่งรวมทุกสาขา</div>
       </div>
     </div>
   );

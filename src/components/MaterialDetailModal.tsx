@@ -63,11 +63,20 @@ export const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
     const prodQty = Number(prod.Produced_Qty) || 0;
     if (prodQty <= 0) return;
 
-    const matches = recipes.filter(
-      (r) =>
-        (r.Product_Code || '').trim().toUpperCase() === pCode &&
-        (r.RM_Code || '').trim().toUpperCase() === normalizedRmCode
-    );
+    const matches = recipes.filter((r) => {
+      const rRm = (r.RM_Code || '').trim().toUpperCase();
+      if (rRm !== normalizedRmCode) return false;
+
+      const rCode = (r.Product_Code || '').trim().toUpperCase();
+      const rName = (r.Product_Name || '').trim().toUpperCase();
+
+      if (rCode && rCode === pCode) return true;
+      if (rName && rName === pCode) return true;
+      if (rCode && (pCode.startsWith(rCode) || pCode.includes(rCode))) return true;
+      if (rName && (pCode.includes(rName) || rName.includes(pCode))) return true;
+
+      return false;
+    });
 
     matches.forEach((match) => {
       const stdQty = Number(match.Standard_Qty) || 0;
@@ -244,15 +253,20 @@ export const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                   <tr key={idx} className="hover:bg-slate-50">
                     <td className="p-2.5 font-mono text-slate-500">{tx.Date}</td>
                     <td className="p-2.5">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold ${
-                          tx.Type === 'Receive'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-blue-50 text-blue-700 border border-blue-200'
-                        }`}
-                      >
-                        {tx.Type === 'Receive' ? '+' : '-'} {tx.Type}
-                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold w-fit ${
+                            tx.Type === 'Receive'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-blue-50 text-blue-700 border border-blue-200'
+                          }`}
+                        >
+                          {tx.Type === 'Receive' ? '+' : '-'} {tx.Type}
+                        </span>
+                        {(tx.Recorder?.includes('Auto') || tx.Note?.includes('ตัดสต็อกตามยอดผลิต')) && (
+                          <span className="text-[10px] text-amber-700 font-medium">⚡ ตัดสต็อกอัตโนมัติ</span>
+                        )}
+                      </div>
                     </td>
                     <td
                       className={`p-2.5 text-right font-mono font-bold ${

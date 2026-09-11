@@ -48,7 +48,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
   const [productCode, setProductCode] = useState(productCodes[0] || '');
   const [producedQtyStr, setProducedQtyStr] = useState<string>('50');
   const [branchDispatches, setBranchDispatches] = useState<Record<string, string>>({});
-  const [autoDeduct, setAutoDeduct] = useState(true);
+  const [autoDeduct, setAutoDeduct] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -72,7 +72,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
           }
         });
         setBranchDispatches(map);
-        setAutoDeduct(true);
+        setAutoDeduct(false);
       } else {
         setDate(new Date().toISOString().split('T')[0]);
         setProductCode(productCodes[0] || '');
@@ -83,7 +83,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
           map[b.branch_code] = idx < 2 ? '25' : '0';
         });
         setBranchDispatches(map);
-        setAutoDeduct(true);
+        setAutoDeduct(false);
       }
     }
   }, [isOpen, initialData, activeBranches]);
@@ -173,7 +173,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
               {initialData ? 'แก้ไขข้อมูลการผลิตและส่งสาขา' : 'บันทึกยอดผลิตและจัดส่งสาขา'}
             </h2>
             <p className="text-xs text-slate-500">
-              บันทึกยอดผลิตจริง และกระจายส่งสาขา A / B
+              บันทึกยอดผลิตจริง และกระจายส่งแต่ละสาขา
             </p>
           </div>
         </div>
@@ -316,7 +316,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
           </div>
 
           {/* Auto-Deduct Checkbox */}
-          <label className="flex items-start gap-2.5 p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200 cursor-pointer">
+          <label className="flex items-start gap-2.5 p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200 cursor-pointer hover:bg-amber-100/50 transition-colors">
             <input
               type="checkbox"
               checked={autoDeduct}
@@ -327,13 +327,11 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
               <span className="font-bold text-amber-950 flex items-center gap-1">
                 <Zap className="w-3.5 h-3.5 text-amber-600" />
                 {initialData
-                  ? 'อัปเดต / ปรับยอดตัดสต็อกวัตถุดิบอัตโนมัติตามยอดผลิตใหม่นี้'
-                  : 'ตัดสต็อกวัตถุดิบอัตโนมัติ (Auto-deduct) ตามสูตร BOM ทันที'}
+                  ? 'อัปเดต / ปรับยอดตัดสต็อกอัตโนมัติตามยอดผลิตใหม่'
+                  : 'ตัดสต็อกวัตถุดิบอัตโนมัติ (Auto-deduct BOM)'}
               </span>
-              <p className="text-[11px] text-amber-800 mt-0.5">
-                {initialData
-                  ? 'ระบบจะคำนวณและปรับเปลี่ยนยอดเบิกใช้จริง (Actual Usage) ของวัตถุดิบทุกรายการในสูตรให้ตรงกับยอดผลิตใหม่ทันที'
-                  : 'ระบบจะสร้างรายการเบิก (Actual Usage) อัตโนมัติใน Tab เบิก/รับสต็อก ครบทุกวัตถุดิบในสูตร'}
+              <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                💡 <strong>คำแนะนำ:</strong> เปิดใช้เฉพาะกรณีที่<em>ไม่ได้บันทึกเบิกจริงเอง</em>ในหน้า 'บันทึกรับ-เบิกวัตถุดิบ' หากมีการกรอกเบิกจริงจากสโตร์อยู่แล้ว ให้ปิดตัวเลือกนี้ไว้ เพื่อป้องกันยอดเบิกซ้ำซ้อน
               </p>
             </div>
           </label>
