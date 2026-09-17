@@ -335,23 +335,25 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="hidden sm:inline">โหลด Excel</span>
             </button>
 
-            {/* LINE Notify Button */}
+            {/* Stock Alert Button */}
             <button
               onClick={onOpenLineNotifyModal}
-              id="btn-line-notify-navbar"
+              id="btn-stock-alert-navbar"
               className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all min-h-[36px] shadow-xs ${
                 lowStockCount > 0
-                  ? 'bg-rose-950/70 border-rose-600/70 text-rose-300 hover:bg-rose-900 animate-pulse'
-                  : 'bg-emerald-950/60 border-emerald-600/40 text-emerald-300 hover:bg-emerald-900/60'
+                  ? 'bg-rose-950/80 border-rose-500/80 text-rose-200 hover:bg-rose-900 animate-pulse'
+                  : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-700'
               }`}
-              title="ตั้งค่าและส่งแจ้งเตือนสต็อกผ่าน LINE Notify"
+              title="ตรวจสอบรายการวัตถุดิบใกล้หมดและสรุปการสั่งซื้อ (Stock Alert)"
             >
-              <Bell className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">แจ้งเตือน LINE</span>
-              {lowStockCount > 0 && (
+              <Bell className={`w-3.5 h-3.5 ${lowStockCount > 0 ? 'text-rose-400' : 'text-slate-400'}`} />
+              <span className="hidden sm:inline">แจ้งเตือนสต็อก</span>
+              {lowStockCount > 0 ? (
                 <span className="bg-rose-600 text-white font-bold text-[10px] px-1.5 py-0.2 rounded-full">
                   {lowStockCount}
                 </span>
+              ) : (
+                <span className="hidden md:inline text-[10px] text-emerald-400 font-normal">ปกติ</span>
               )}
             </button>
 

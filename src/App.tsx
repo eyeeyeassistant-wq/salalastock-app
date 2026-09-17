@@ -1684,6 +1684,7 @@ export default function App() {
         isOpen={isLineNotifyModalOpen}
         onClose={() => setIsLineNotifyModalOpen(false)}
         summaries={summaries}
+        materials={materials}
         onShowNotification={showNotification}
       />
 
