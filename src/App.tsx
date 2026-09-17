@@ -298,65 +298,21 @@ export default function App() {
         });
         const finalRecs = sanitizeRecipes(Array.from(recsMap.values()));
 
-        // 3. Merge Daily Productions (Remote is source of truth, key strictly by Date + Product_Code)
-        const prodMap = new Map<string, DailyProduction>();
+        // 3. Daily Productions (Remote database is authoritative source of truth)
+        let finalProds: DailyProduction[];
+        if (connRes.tables.daily_production) {
+          finalProds = sanitizeProductions(prods || []);
+        } else {
+          finalProds = localProds;
+        }
 
-        // Remote database is primary source of truth
-        (prods || []).forEach((p) => {
-          const key = `${p.Date}___${(p.Product_Code || '').trim().toUpperCase()}`;
-          if (!prodMap.has(key)) {
-            prodMap.set(key, p);
-          }
-        });
-
-        // Only add local productions if they are truly not yet in the remote database
-        (localProds || []).forEach((lp) => {
-          const key = `${lp.Date}___${(lp.Product_Code || '').trim().toUpperCase()}`;
-          if (!prodMap.has(key)) {
-            prodMap.set(key, lp);
-            saveDailyProduction(lp).catch(console.warn);
-          } else {
-            // Enrich with any local branch dispatches that remote might lack
-            const existing = prodMap.get(key)!;
-            if (
-              lp.branch_dispatches &&
-              Object.keys(lp.branch_dispatches).length > 0 &&
-              (!existing.branch_dispatches || Object.keys(existing.branch_dispatches).length === 0)
-            ) {
-              const enriched = { ...existing, branch_dispatches: lp.branch_dispatches };
-              prodMap.set(key, enriched);
-              saveDailyProduction(enriched).catch(console.warn);
-            }
-          }
-        });
-        const finalProds = sanitizeProductions(Array.from(prodMap.values()));
-
-        // 4. Merge Stock Transactions (Deduplicate and prevent duplicate re-uploads)
-        const finalTxsList: StockTransaction[] = [];
-        const seenTxSigs = new Set<string>();
-        const seenTxIds = new Set<string>();
-
-        // Remote transactions are source of truth
-        (txs || []).forEach((t) => {
-          const sig = `${t.Date}___${t.Type}___${(t.RM_Code || '').trim().toUpperCase()}___${(Number(t.Qty) || 0).toFixed(3)}___${(t.Note || '').trim()}`;
-          if (!seenTxSigs.has(sig) && (!t.id || !seenTxIds.has(String(t.id)))) {
-            seenTxSigs.add(sig);
-            if (t.id) seenTxIds.add(String(t.id));
-            finalTxsList.push(t);
-          }
-        });
-
-        // Local transactions: only add if signature does not already exist in remote!
-        (localTxs || []).forEach((lt) => {
-          const sig = `${lt.Date}___${lt.Type}___${(lt.RM_Code || '').trim().toUpperCase()}___${(Number(lt.Qty) || 0).toFixed(3)}___${(lt.Note || '').trim()}`;
-          if (!seenTxSigs.has(sig) && (!lt.id || !seenTxIds.has(String(lt.id)))) {
-            seenTxSigs.add(sig);
-            if (lt.id) seenTxIds.add(String(lt.id));
-            finalTxsList.push(lt);
-            saveStockTransaction(lt).catch(console.warn);
-          }
-        });
-        const finalTxs = sanitizeTransactions(finalTxsList);
+        // 4. Stock Transactions (Remote database is authoritative source of truth)
+        let finalTxs: StockTransaction[];
+        if (connRes.tables.stock_transactions) {
+          finalTxs = sanitizeTransactions(txs || []);
+        } else {
+          finalTxs = localTxs;
+        }
 
         // 5. Merge Monthly Stock Counts
         const finalCounts = counts && counts.length > 0 ? counts : localCounts;
@@ -501,7 +457,7 @@ export default function App() {
   };
 
   // Clear data handler
-  const handleConfirmClearData = (options: {
+  const handleConfirmClearData = async (options: {
     clearTransactions: boolean;
     clearProductions: boolean;
     clearMaterials: boolean;
@@ -514,37 +470,90 @@ export default function App() {
 
     localStorage.setItem('stock_data_initialized', 'true');
 
+    // 1. Update local state & localStorage first
     if (options.clearTransactions) {
       nextTxs = [];
       setTransactions([]);
       localStorage.setItem('stock_transactions', JSON.stringify([]));
-      clearSupabaseTable('stock_transactions').catch(console.warn);
+      setStockCountRecords([]);
+      localStorage.setItem('stock_count_records', JSON.stringify([]));
     }
     if (options.clearProductions) {
       nextProds = [];
       setProductions([]);
       localStorage.setItem('stock_productions', JSON.stringify([]));
-      clearSupabaseTable('daily_production').catch(console.warn);
-    }
-    if (options.clearMaterials) {
-      nextMats = [];
-      setMaterials([]);
-      localStorage.setItem('stock_materials', JSON.stringify([]));
-      clearSupabaseTable('master_materials').catch(console.warn);
     }
     if (options.clearRecipes) {
       nextRecipes = [];
       setRecipes([]);
       localStorage.setItem('stock_recipes', JSON.stringify([]));
-      clearSupabaseTable('bom_recipe').catch(console.warn);
     }
-    showNotification('🗑️ เคลียร์ข้อมูลที่เลือกเรียบร้อยแล้ว พร้อมกรอกข้อมูลจริง');
+    if (options.clearMaterials) {
+      nextMats = [];
+      setMaterials([]);
+      localStorage.setItem('stock_materials', JSON.stringify([]));
+    }
+
     triggerAutoSync({
       materials: nextMats,
       recipes: nextRecipes,
       productions: nextProds,
       transactions: nextTxs,
     });
+
+    // 2. Clear Supabase tables in strict Foreign Key dependency order:
+    // Child tables first -> Parent tables last
+    const errors: string[] = [];
+    try {
+      if (options.clearTransactions) {
+        try {
+          await clearSupabaseTable('stock_transactions');
+        } catch (e: any) {
+          errors.push(`stock_transactions: ${e.message}`);
+        }
+        // Also clean up monthly count & inventory snapshots
+        await clearSupabaseTable('monthly_stock_counts').catch(() => {});
+        await clearSupabaseTable('monthly_inventory_summary').catch(() => {});
+        await clearSupabaseTable('stock_count_sessions').catch(() => {});
+      }
+
+      if (options.clearProductions) {
+        try {
+          await clearSupabaseTable('daily_production');
+        } catch (e: any) {
+          errors.push(`daily_production: ${e.message}`);
+        }
+        // Also clean up monthly production summary
+        await clearSupabaseTable('monthly_production_summary').catch(() => {});
+      }
+
+      // If clearing materials, we MUST clear bom_recipe first because bom_recipe references master_materials!
+      if (options.clearRecipes || options.clearMaterials) {
+        try {
+          await clearSupabaseTable('bom_recipe');
+        } catch (e: any) {
+          errors.push(`bom_recipe: ${e.message}`);
+        }
+      }
+
+      if (options.clearMaterials) {
+        try {
+          await clearSupabaseTable('master_materials');
+        } catch (e: any) {
+          errors.push(`master_materials: ${e.message}`);
+        }
+      }
+
+      if (errors.length > 0) {
+        console.warn('Supabase clear warnings:', errors);
+        showNotification(`⚠️ เคลียร์ในเครื่องสำเร็จ แต่ติดปัญหาที่ฐานข้อมูล: ${errors.join(', ')}`);
+      } else {
+        showNotification('🗑️ เคลียร์ข้อมูลในระบบและใน Supabase ทั้งหมดเรียบร้อยแล้ว');
+      }
+    } catch (err: any) {
+      console.error('Error during clear data:', err);
+      showNotification(`⚠️ เกิดข้อผิดพลาดในการล้างข้อมูล: ${err.message}`);
+    }
   };
 
   // Restore sample data handler (optional test data)

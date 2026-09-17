@@ -83,7 +83,74 @@ export function sanitizeMaterials(materials: MasterMaterial[] = []): MasterMater
 }
 
 /**
- * Sanitize and deduplicate recipes by Product_Code + RM_Code
+ * Get active BOM recipes for a given target date (YYYY-MM-DD)
+ * If a recipe has effective_date, it is active on or after that date.
+ * If multiple versions exist for the same Product_Code + RM_Code, the one with
+ * the most recent effective_date (<= targetDate) is selected.
+ */
+export function getEffectiveRecipesForDate(
+  recipes: BOMRecipe[] = [],
+  targetDate?: string
+): BOMRecipe[] {
+  const safeRecipes = Array.isArray(recipes) ? recipes : [];
+  if (safeRecipes.length === 0) return [];
+
+  // If no target date provided, use today's date
+  const dateStr = (targetDate || new Date().toISOString().split('T')[0]).trim();
+
+  // Group recipes by `${Product_Code}___${RM_Code}`
+  const groups = new Map<string, BOMRecipe[]>();
+
+  safeRecipes.forEach((r) => {
+    if (!r || !r.Product_Code || !r.RM_Code) return;
+    const pCode = String(r.Product_Code).trim().toUpperCase();
+    const rmCode = String(r.RM_Code).trim().toUpperCase();
+    if (!pCode || !rmCode) return;
+
+    const key = `${pCode}___${rmCode}`;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key)!.push(r);
+  });
+
+  const effectiveRecipes: BOMRecipe[] = [];
+
+  groups.forEach((items) => {
+    // Filter to recipes where effective_date <= dateStr (or no effective_date specified, which acts as baseline)
+    const validItems = items.filter((item) => {
+      const eff = item.effective_date ? String(item.effective_date).trim() : '';
+      if (!eff) return true; // Baseline recipe (always valid if no dated override applies)
+      return eff <= dateStr;
+    });
+
+    if (validItems.length === 0) {
+      // If none are on or before dateStr, take the earliest version available so we still have a recipe
+      const sortedByDate = [...items].sort((a, b) =>
+        String(a.effective_date || '').localeCompare(String(b.effective_date || ''))
+      );
+      effectiveRecipes.push(sortedByDate[0]);
+      return;
+    }
+
+    // Sort: items with effective_date come first (descending by effective_date), baseline without effective_date last
+    validItems.sort((a, b) => {
+      const dateA = a.effective_date ? String(a.effective_date).trim() : '';
+      const dateB = b.effective_date ? String(b.effective_date).trim() : '';
+      if (dateA && dateB) return dateB.localeCompare(dateA); // Most recent date first
+      if (dateA && !dateB) return -1; // Dated version takes priority over baseline
+      if (!dateA && dateB) return 1;
+      return 0;
+    });
+
+    effectiveRecipes.push(validItems[0]);
+  });
+
+  return effectiveRecipes;
+}
+
+/**
+ * Sanitize and deduplicate recipes by Product_Code + RM_Code + effective_date
  */
 export function sanitizeRecipes(recipes: BOMRecipe[] = []): BOMRecipe[] {
   const safeRecipes = Array.isArray(recipes) ? recipes : [];
@@ -95,23 +162,27 @@ export function sanitizeRecipes(recipes: BOMRecipe[] = []): BOMRecipe[] {
     const rmCode = String(r.RM_Code).trim().toUpperCase();
     if (!pCode || !rmCode) return;
 
-    const key = `${pCode}___${rmCode}`;
+    const effDate = r.effective_date ? String(r.effective_date).trim() : '';
+    const key = `${pCode}___${rmCode}___${effDate}`;
     const existing = map.get(key);
     const stdQty = Number(r.Standard_Qty) || 0;
 
     if (!existing) {
       map.set(key, {
-        id: r.id || `recipe_${pCode}_${rmCode}_${idx}`,
+        id: r.id || `recipe_${pCode}_${rmCode}_${effDate || 'base'}_${idx}`,
         Product_Code: pCode,
         Product_Name: String(r.Product_Name || '').trim(),
         RM_Code: rmCode,
         Standard_Qty: stdQty,
+        effective_date: effDate || undefined,
+        note: r.note ? String(r.note).trim() : undefined,
       });
     } else {
       map.set(key, {
         ...existing,
         Product_Name: r.Product_Name && String(r.Product_Name).trim() ? String(r.Product_Name).trim() : existing.Product_Name,
         Standard_Qty: stdQty > 0 ? stdQty : existing.Standard_Qty,
+        note: r.note && String(r.note).trim() ? String(r.note).trim() : existing.note,
       });
     }
   });
@@ -291,6 +362,7 @@ export function generateMonthlySummary(
     actualUsage = Number(actualUsage.toFixed(3));
 
     // 3. Expected_Usage: SUM of (Produced_Qty * Standard_Qty) for this RM_Code across all productions and recipes
+    // Uses the effective recipe version based on each production's Date (or baseline if none specified)
     let expectedUsage = 0;
     safeProductions.forEach((prod) => {
       if (!prod) return;
@@ -298,7 +370,10 @@ export function generateMonthlySummary(
       const prodQty = Number(prod.Produced_Qty) || 0;
       if (prodQty <= 0 || !pCode) return;
 
-      const matchingRecipes = cleanRecipes.filter((r) => {
+      const prodDate = prod.Date ? String(prod.Date).trim() : undefined;
+      const effectiveRecipesForProdDate = getEffectiveRecipesForDate(cleanRecipes, prodDate);
+
+      const matchingRecipes = effectiveRecipesForProdDate.filter((r) => {
         const rRmCode = String(r.RM_Code || '').trim().toUpperCase();
         if (rRmCode !== rmCode) return false;
 
@@ -401,13 +476,16 @@ export function generateMonthlySummary(
 
 /**
  * Calculate required ingredient quantities for a given batch of product
+ * Optionally respects effective recipes on targetDate
  */
 export function calculateIngredientsForBatch(
   productCode: string,
   qty: number,
-  recipes: BOMRecipe[]
+  recipes: BOMRecipe[],
+  targetDate?: string
 ): Array<{ rmCode: string; standardQtyPerUnit: number; totalRequired: number }> {
-  const matchedRecipes = recipes.filter((r) => r.Product_Code === productCode);
+  const effectiveList = targetDate ? getEffectiveRecipesForDate(recipes, targetDate) : recipes;
+  const matchedRecipes = effectiveList.filter((r) => r.Product_Code === productCode);
   return matchedRecipes.map((r) => ({
     rmCode: r.RM_Code,
     standardQtyPerUnit: r.Standard_Qty,

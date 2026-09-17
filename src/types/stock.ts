@@ -15,6 +15,8 @@ export interface BOMRecipe {
   Product_Name: string;
   RM_Code: string;
   Standard_Qty: number;
+  effective_date?: string; // วันที่เริ่มมีผลบังคับใช้สูตรนี้ (YYYY-MM-DD) สำหรับการปรับปรุงสูตรในอนาคต
+  note?: string; // บันทึกเหตุผลการปรับปรุงสูตร (เช่น ปรับลดหวาน, เพิ่มปริมาณ)
 }
 
 export interface MasterBranch {

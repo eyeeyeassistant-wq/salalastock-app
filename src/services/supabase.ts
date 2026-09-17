@@ -1131,14 +1131,33 @@ export async function deleteBOMRecipe(idOrProductCode: string, rmCode?: string):
 }
 
 export async function clearSupabaseTable(
-  tableName: 'master_materials' | 'bom_recipe' | 'daily_production' | 'stock_transactions' | 'monthly_stock_counts'
+  tableName:
+    | 'master_materials'
+    | 'bom_recipe'
+    | 'daily_production'
+    | 'stock_transactions'
+    | 'monthly_stock_counts'
+    | 'monthly_production_summary'
+    | 'monthly_inventory_summary'
+    | 'stock_count_sessions'
 ): Promise<void> {
   const supabase = getSupabaseClient();
-  if (tableName === 'master_materials') {
-    await supabase.from(tableName).delete().neq('rm_code', '___NEVER_MATCH___');
-  } else {
-    // For tables with bigint id, use gt('id', 0) to avoid syntax error 22P02
-    await supabase.from(tableName).delete().gt('id', 0);
+  try {
+    const pkColumn = tableName === 'master_materials' ? 'rm_code' : 'id';
+    const { error } = await supabase.from(tableName).delete().not(pkColumn, 'is', null);
+    if (error) {
+      // Fallback in case table has different pk
+      console.warn(`Primary key delete on ${tableName} failed with ${error.message}, trying fallback...`);
+      if (tableName === 'bom_recipe') {
+        const { error: fbErr } = await supabase.from('bom_recipe').delete().not('product_code', 'is', null);
+        if (fbErr) throw fbErr;
+      } else {
+        throw error;
+      }
+    }
+  } catch (err: any) {
+    console.error(`Error clearing table ${tableName} in Supabase:`, err);
+    throw err;
   }
 }
 

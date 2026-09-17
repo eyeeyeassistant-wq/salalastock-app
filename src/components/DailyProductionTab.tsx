@@ -109,6 +109,13 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
   const [isLoadingSavedSummary, setIsLoadingSavedSummary] = useState<boolean>(false);
   const [persistedSummaryData, setPersistedSummaryData] = useState<MonthlyProductionSummary[] | null>(null);
 
+  // Clear cached summary view immediately when productions are wiped
+  React.useEffect(() => {
+    if (productions.length === 0) {
+      setPersistedSummaryData(null);
+    }
+  }, [productions.length]);
+
   const formatMonthLabel = (mString: string) => {
     if (mString === 'all') return 'ทุกช่วงเวลา (All Time)';
     const [year, month] = mString.split('-');

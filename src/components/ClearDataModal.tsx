@@ -9,7 +9,7 @@ interface ClearDataModalProps {
     clearProductions: boolean;
     clearMaterials: boolean;
     clearRecipes: boolean;
-  }) => void;
+  }) => Promise<void> | void;
   onRestoreSampleData: () => void;
   counts: {
     materials: number;
@@ -30,27 +30,42 @@ export const ClearDataModal: React.FC<ClearDataModalProps> = ({
   const [clearProductions, setClearProductions] = useState(true);
   const [clearMaterials, setClearMaterials] = useState(false);
   const [clearRecipes, setClearRecipes] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleClear = () => {
-    onConfirmClear({
-      clearTransactions,
-      clearProductions,
-      clearMaterials,
-      clearRecipes,
-    });
-    onClose();
+  const handleClear = async () => {
+    setIsClearing(true);
+    try {
+      await onConfirmClear({
+        clearTransactions,
+        clearProductions,
+        clearMaterials,
+        clearRecipes,
+      });
+      onClose();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsClearing(false);
+    }
   };
 
-  const handleClearAll = () => {
-    onConfirmClear({
-      clearTransactions: true,
-      clearProductions: true,
-      clearMaterials: true,
-      clearRecipes: true,
-    });
-    onClose();
+  const handleClearAll = async () => {
+    setIsClearing(true);
+    try {
+      await onConfirmClear({
+        clearTransactions: true,
+        clearProductions: true,
+        clearMaterials: true,
+        clearRecipes: true,
+      });
+      onClose();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsClearing(false);
+    }
   };
 
   return (
@@ -190,28 +205,38 @@ export const ClearDataModal: React.FC<ClearDataModalProps> = ({
           <button
             type="button"
             onClick={handleClearAll}
-            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-rose-700 bg-rose-100 hover:bg-rose-200 transition-colors"
+            disabled={isClearing}
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-rose-700 bg-rose-100 hover:bg-rose-200 disabled:opacity-50 transition-colors"
           >
-            <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
-            <span>เคลียร์ทั้งหมด (Clear All)</span>
+            {isClearing ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-600" />
+            ) : (
+              <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+            )}
+            <span>{isClearing ? 'กำลังเคลียร์ข้อมูล...' : 'เคลียร์ทั้งหมด (Clear All)'}</span>
           </button>
 
           <div className="flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200/60 transition-colors"
+              disabled={isClearing}
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200/60 disabled:opacity-50 transition-colors"
             >
               ยกเลิก
             </button>
             <button
               type="button"
               onClick={handleClear}
-              disabled={!clearProductions && !clearTransactions && !clearMaterials && !clearRecipes}
+              disabled={isClearing || (!clearProductions && !clearTransactions && !clearMaterials && !clearRecipes)}
               className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white shadow-xs transition-colors"
             >
-              <Trash2 className="w-4 h-4" />
-              <span>ยืนยันเคลียร์ข้อมูลที่เลือก</span>
+              {isClearing ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+              <span>{isClearing ? 'กำลังเคลียร์ข้อมูล...' : 'ยืนยันเคลียร์ข้อมูลที่เลือก'}</span>
             </button>
           </div>
         </div>
