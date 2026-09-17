@@ -67,6 +67,7 @@ interface MonthlyDashboardTabProps {
   onOpenSupabaseModal?: () => void;
   onOpenLineNotifyModal?: () => void;
   onOpenFormulaGuide: () => void;
+  onOpenExportExcelModal?: () => void;
   onSelectMaterialDetail: (rmCode: string) => void;
   onNavigateToTab: (tabName: any) => void;
 }
@@ -96,6 +97,7 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
   onOpenSupabaseModal,
   onOpenLineNotifyModal,
   onOpenFormulaGuide,
+  onOpenExportExcelModal,
   onSelectMaterialDetail,
   onNavigateToTab,
 }) => {
@@ -465,6 +467,17 @@ export const MonthlyDashboardTab: React.FC<MonthlyDashboardTabProps> = ({
               >
                 <Database className="w-3.5 h-3.5 text-emerald-400" />
                 <span>ฐานข้อมูลกลาง {isSupabaseConnected ? '🟢 พร้อมใช้' : '🟡 ตั้งค่า'}</span>
+              </button>
+            )}
+
+            {onOpenExportExcelModal && (
+              <button
+                onClick={onOpenExportExcelModal}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors shrink-0"
+                title="ส่งออกข้อมูลระบบทั้งหมดเป็นไฟล์ Excel (.xlsx) ครบทุก Sheet"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-100" />
+                <span>โหลด Excel ทั้งหมด</span>
               </button>
             )}
 

@@ -16,7 +16,9 @@ import {
   Edit2,
   X,
   Trash2,
+  FileSpreadsheet,
 } from 'lucide-react';
+import { exportStockTransactionsToExcel } from '../services/excelExport';
 
 interface StockTransactionsTabProps {
   transactions: StockTransaction[];
@@ -159,11 +161,20 @@ export const StockTransactionsTab: React.FC<StockTransactionsTabProps> = ({
               บันทึกเคลื่อนไหวรับเข้า / เบิกใช้วัตถุดิบ (Stock Transactions)
             </h2>
           </div>
-          <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+          <div className="flex items-center gap-3 text-xs font-medium text-slate-500">
             <span className="sm:hidden text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
               👉 ปัดซ้าย-ขวาเพื่อดูตาราง
             </span>
-            <span>แสดง {filteredTransactions.length} รายการ</span>
+            <span className="hidden sm:inline">แสดง {filteredTransactions.length} รายการ</span>
+            <button
+              type="button"
+              onClick={() => exportStockTransactionsToExcel(filteredTransactions, materials)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 shadow-2xs transition-colors"
+              title="ดาวน์โหลดรายการเบิก-รับสต็อกเป็นไฟล์ Excel (.xlsx)"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>โหลด Excel</span>
+            </button>
           </div>
         </div>
 
@@ -207,6 +218,16 @@ export const StockTransactionsTab: React.FC<StockTransactionsTabProps> = ({
                           Actual Usage (เบิกจริง)
                         </span>
                       )}
+                      {tx.Reason_Type && (
+                        <span className="block text-[10px] text-slate-500 mt-0.5 font-medium">
+                          {tx.Reason_Type === 'PRODUCTION' ? 'เบิกผลิตปกติ' :
+                           tx.Reason_Type === 'PURCHASE_RECEIVE' ? 'สั่งซื้อรับเข้า' :
+                           tx.Reason_Type === 'WASTE_EXPIRED' ? 'ของเสีย/หมดอายุ' :
+                           tx.Reason_Type === 'SAMPLE_TESTING' ? 'ทดลองสูตร' :
+                           tx.Reason_Type === 'STOCK_ADJUSTMENT' ? 'ปรับปรุงสต็อก' :
+                           tx.Reason_Type === 'RETURN' ? 'รับคืน/ส่งคืน' : tx.Reason_Type}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3.5 font-mono font-bold text-slate-900 text-xs sm:text-sm">
                       {tx.RM_Code}
@@ -215,12 +236,23 @@ export const StockTransactionsTab: React.FC<StockTransactionsTabProps> = ({
                       {getMaterialName(tx.RM_Code)}
                     </td>
                     <td
-                      className={`px-4 py-3.5 text-right font-mono font-bold text-xs sm:text-sm ${
+                      className={`px-4 py-3.5 text-right font-mono text-xs sm:text-sm ${
                         isReceive ? 'text-emerald-700' : 'text-slate-900'
                       }`}
                     >
-                      {isReceive ? '+' : '-'}
-                      {tx.Qty.toLocaleString()}
+                      <div className="font-bold">
+                        {isReceive ? '+' : '-'}
+                        {tx.Qty.toLocaleString()}
+                      </div>
+                      {tx.Total_Amount ? (
+                        <div className="text-[11px] font-normal text-slate-500">
+                          ฿{tx.Total_Amount.toLocaleString()}
+                        </div>
+                      ) : tx.Unit_Price ? (
+                        <div className="text-[11px] font-normal text-slate-500">
+                          @฿{tx.Unit_Price}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3.5 text-slate-700 text-xs sm:text-sm">
                       <div className="flex items-center gap-1.5">
@@ -229,7 +261,13 @@ export const StockTransactionsTab: React.FC<StockTransactionsTabProps> = ({
                       </div>
                     </td>
                     <td className="px-4 py-3.5 text-slate-500 text-xs sm:text-sm">
-                      {tx.Note || '-'}
+                      <div>{tx.Note || '-'}</div>
+                      {(tx.Lot_No || tx.Expiry_Date) && (
+                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400 font-mono">
+                          {tx.Lot_No && <span>Lot: {tx.Lot_No}</span>}
+                          {tx.Expiry_Date && <span>Exp: {tx.Expiry_Date}</span>}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3.5 text-center">
                       <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">

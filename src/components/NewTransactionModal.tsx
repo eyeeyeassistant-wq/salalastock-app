@@ -4,6 +4,7 @@ import {
   StockTransaction,
   TransactionType,
   MonthlyStockSummary,
+  UsageReasonType,
 } from '../types/stock';
 import {
   ArrowDownLeft,
@@ -19,6 +20,10 @@ import {
   ChevronDown,
   RotateCcw,
   Sparkles,
+  Coins,
+  Barcode,
+  Clock,
+  Tag,
 } from 'lucide-react';
 
 interface NewTransactionModalProps {
@@ -43,6 +48,10 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
   const [type, setType] = useState<TransactionType>(initialType);
   const [rmCode, setRmCode] = useState<string>('');
   const [qtyStr, setQtyStr] = useState<string>('10');
+  const [unitPriceStr, setUnitPriceStr] = useState<string>('');
+  const [reasonType, setReasonType] = useState<UsageReasonType>('PRODUCTION');
+  const [lotNo, setLotNo] = useState<string>('');
+  const [expiryDate, setExpiryDate] = useState<string>('');
   const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [recorder, setRecorder] = useState<string>('พนักงานคลังสินค้า');
   const [note, setNote] = useState<string>('');
@@ -64,21 +73,30 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
         setType(initialData.Type);
         setRmCode(initialData.RM_Code);
         setQtyStr(initialData.Qty.toString());
+        setUnitPriceStr(initialData.Unit_Price !== undefined ? initialData.Unit_Price.toString() : '');
+        setReasonType(initialData.Reason_Type || (initialData.Type === 'Receive' ? 'PURCHASE_RECEIVE' : 'PRODUCTION'));
+        setLotNo(initialData.Lot_No || '');
+        setExpiryDate(initialData.Expiry_Date || '');
         setDate(initialData.Date);
         setRecorder(initialData.Recorder || '');
         setNote(initialData.Note || '');
       } else {
-        setType(initialType);
-        // Default to first material if available
-        const defaultCode = materials[0]?.RM_Code || '';
+        const curType = initialType;
+        setType(curType);
+        const defaultMat = materials[0];
+        const defaultCode = defaultMat?.RM_Code || '';
         setRmCode(defaultCode);
         setQtyStr('10');
+        setUnitPriceStr(defaultMat?.Unit_Price ? defaultMat.Unit_Price.toString() : '');
+        setReasonType(curType === 'Receive' ? 'PURCHASE_RECEIVE' : 'PRODUCTION');
+        setLotNo('');
+        setExpiryDate('');
         setDate(new Date().toISOString().split('T')[0]);
         setRecorder('พนักงานคลังสินค้า');
         setNote('');
       }
     }
-  }, [isOpen, initialData, initialType]);
+  }, [isOpen, initialData, initialType, materials]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -130,10 +148,24 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
 
   const handleSelectMaterial = (code: string) => {
     setRmCode(code);
+    const mat = materials.find((m) => m.RM_Code === code);
+    if (mat?.Unit_Price && !unitPriceStr) {
+      setUnitPriceStr(mat.Unit_Price.toString());
+    }
     setIsDropdownOpen(false);
     setSearchMaterial('');
     setErrorMessage(null);
   };
+
+  const numericUnitPrice = useMemo(() => {
+    const clean = unitPriceStr.replace(',', '.').trim();
+    const val = parseFloat(clean);
+    return isNaN(val) ? 0 : val;
+  }, [unitPriceStr]);
+
+  const totalAmount = useMemo(() => {
+    return Number((numericQty * numericUnitPrice).toFixed(2));
+  }, [numericQty, numericUnitPrice]);
 
   const handleQuickAddQty = (amount: number) => {
     const current = numericQty;
@@ -162,6 +194,11 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
       Type: type,
       RM_Code: rmCode,
       Qty: numericQty,
+      Unit_Price: numericUnitPrice > 0 ? numericUnitPrice : undefined,
+      Total_Amount: totalAmount > 0 ? totalAmount : undefined,
+      Reason_Type: reasonType,
+      Lot_No: lotNo.trim() || undefined,
+      Expiry_Date: expiryDate.trim() || undefined,
       Recorder: recorder.trim() || 'พนักงานคลังสินค้า',
       Note: note.trim(),
     });
@@ -464,6 +501,96 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
                 <span>คำเตือน: ยอดคงเหลือจะต่ำกว่า Safety Stock ({selectedMaterial?.Safety_Stock} {unit})</span>
               </div>
             )}
+          </div>
+
+          {/* Reason Type & Unit Price */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-blue-600" />
+                สาเหตุ / วัตถุประสงค์ (Reason)
+              </label>
+              <select
+                value={reasonType}
+                onChange={(e) => setReasonType(e.target.value as UsageReasonType)}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+              >
+                {type === 'Receive' ? (
+                  <>
+                    <option value="PURCHASE_RECEIVE">สั่งซื้อรับเข้าปกติ (Purchase Receive)</option>
+                    <option value="STOCK_ADJUSTMENT">ปรับปรุงสต็อกตรวจนับ (Inventory Adjustment)</option>
+                    <option value="RETURN">รับคืนจากแผนก (Department Return)</option>
+                    <option value="SAMPLE_TESTING">รับตัวอย่างทดลอง (Sample)</option>
+                    <option value="OTHER">อื่นๆ (Other)</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="PRODUCTION">เบิกผลิตตามปกติ (Normal Production)</option>
+                    <option value="WASTE_EXPIRED">ของเสีย / หมดอายุ (Waste / Expired)</option>
+                    <option value="SAMPLE_TESTING">เบิกทดลองสูตร / R&D (Sample / Testing)</option>
+                    <option value="STOCK_ADJUSTMENT">ปรับปรุงสต็อกตรวจนับ (Inventory Adjustment)</option>
+                    <option value="RETURN">ส่งคืนผู้ขาย (Return to Supplier)</option>
+                    <option value="OTHER">อื่นๆ (Other)</option>
+                  </>
+                )}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Coins className="w-3.5 h-3.5 text-amber-600" />
+                  ราคาต่อหน่วย (บาท/{unit || 'หน่วย'})
+                </span>
+                {totalAmount > 0 && (
+                  <span className="text-[11px] font-mono font-semibold text-emerald-700">
+                    รวม ฿{totalAmount.toLocaleString()}
+                  </span>
+                )}
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={unitPriceStr}
+                  onChange={(e) => setUnitPriceStr(e.target.value)}
+                  placeholder="เช่น 45 หรือ 120.50"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono font-medium text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium">
+                  ฿
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Lot No & Expiry Date (Traceability) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
+                <Barcode className="w-3.5 h-3.5 text-slate-500" />
+                หมายเลข Lot / แบทช์ (Lot No.)
+              </label>
+              <input
+                type="text"
+                value={lotNo}
+                onChange={(e) => setLotNo(e.target.value)}
+                placeholder="เช่น LOT-202603-01"
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                วันหมดอายุ (Expiry Date)
+              </label>
+              <input
+                type="date"
+                value={expiryDate}
+                onChange={(e) => setExpiryDate(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
 
           {/* Recorder & Note */}

@@ -88,9 +88,20 @@ export function getSupabaseClient(): SupabaseClient {
 
 // SQL Schema Definition for easy copy/paste into Database SQL Console
 export const NEW_TABLES_SQL_SCHEMA = `-- ============================================================
--- SQL Schema สำหรับ 4 ตารางใหม่ (สรุปยอดผลิต/สต็อก/รอบตรวจนับ/ตั้งค่า)
--- นำโค้ดนี้ไปรันใน Supabase SQL Editor หากเคยรัน 6 ตารางแรกไปแล้ว
+-- SQL Schema สำหรับ 4 ตารางใหม่ + อัปเกรดคอลัมน์ผู้ผลิตและต้นทุน (Audit & Tracking)
+-- นำโค้ดนี้ไปรันใน Supabase SQL Editor ได้ทันที
 -- ============================================================
+
+-- เพิ่มคอลัมน์ระบบตรวจสอบย้อนหลังและการควบคุมต้นทุน (Auditability & Traceability)
+ALTER TABLE daily_production ADD COLUMN IF NOT EXISTS producer_name TEXT DEFAULT '';
+ALTER TABLE master_materials ADD COLUMN IF NOT EXISTS unit_price NUMERIC DEFAULT 0;
+ALTER TABLE master_materials ADD COLUMN IF NOT EXISTS supplier_name TEXT DEFAULT '';
+ALTER TABLE stock_transactions ADD COLUMN IF NOT EXISTS unit_price NUMERIC DEFAULT 0;
+ALTER TABLE stock_transactions ADD COLUMN IF NOT EXISTS total_amount NUMERIC DEFAULT 0;
+ALTER TABLE stock_transactions ADD COLUMN IF NOT EXISTS reason_type TEXT DEFAULT 'PRODUCTION';
+ALTER TABLE stock_transactions ADD COLUMN IF NOT EXISTS lot_no TEXT DEFAULT '';
+ALTER TABLE stock_transactions ADD COLUMN IF NOT EXISTS expiry_date TEXT;
+ALTER TABLE stock_transactions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
 -- 7. Table: monthly_production_summary (สรุปผลรวมการผลิตแต่ละเมนูและยอดส่งสาขารายเดือน)
 CREATE TABLE IF NOT EXISTS monthly_production_summary (
@@ -171,7 +182,7 @@ CREATE POLICY "Allow anon all on system_settings" ON system_settings FOR ALL USI
 `;
 
 export const SUPABASE_SQL_SCHEMA = `-- ============================================================
--- SQL Schema for Complete Stock & Production Tracking System (10 Tables)
+-- SQL Schema for Complete Stock & Production Tracking System (10 Tables + Views)
 -- Execute this in your Database SQL Console / Query Editor
 -- ============================================================
 
@@ -182,6 +193,8 @@ CREATE TABLE IF NOT EXISTS master_materials (
   unit TEXT NOT NULL,
   opening_stock NUMERIC DEFAULT 0,
   safety_stock NUMERIC DEFAULT 0,
+  unit_price NUMERIC DEFAULT 0,
+  supplier_name TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -213,6 +226,7 @@ CREATE TABLE IF NOT EXISTS daily_production (
   date TEXT NOT NULL,
   product_code TEXT NOT NULL,
   produced_qty NUMERIC DEFAULT 0,
+  producer_name TEXT DEFAULT '',
   total_dispatched NUMERIC DEFAULT 0,
   branch_dispatches JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -228,9 +242,15 @@ CREATE TABLE IF NOT EXISTS stock_transactions (
   type TEXT NOT NULL CHECK (type IN ('Receive', 'Actual Usage')),
   rm_code TEXT NOT NULL,
   qty NUMERIC DEFAULT 0,
+  unit_price NUMERIC DEFAULT 0,
+  total_amount NUMERIC DEFAULT 0,
+  reason_type TEXT DEFAULT 'PRODUCTION',
+  lot_no TEXT DEFAULT '',
+  expiry_date TEXT,
   recorder TEXT,
   note TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 6. Table: monthly_stock_counts
@@ -367,6 +387,8 @@ CREATE TABLE IF NOT EXISTS master_materials (
   unit TEXT NOT NULL,
   opening_stock NUMERIC DEFAULT 0,
   safety_stock NUMERIC DEFAULT 0,
+  unit_price NUMERIC DEFAULT 0,
+  supplier_name TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -404,6 +426,7 @@ CREATE TABLE IF NOT EXISTS daily_production (
   date TEXT NOT NULL,
   product_code TEXT NOT NULL,
   produced_qty NUMERIC DEFAULT 0,
+  producer_name TEXT DEFAULT '',
   total_dispatched NUMERIC DEFAULT 0,
   branch_dispatches JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -412,9 +435,12 @@ CREATE TABLE IF NOT EXISTS daily_production (
 CREATE INDEX IF NOT EXISTS idx_daily_production_date ON daily_production(date);
 CREATE INDEX IF NOT EXISTS idx_daily_production_product ON daily_production(product_code);
 
--- เพิ่มคอลัมน์ branch_dispatches (JSONB) และ total_dispatched ให้ตารางเดิมหากเคยสร้างไว้แล้ว
+-- เพิ่มคอลัมน์ผู้ผลิตและยอดส่ง
+ALTER TABLE daily_production ADD COLUMN IF NOT EXISTS producer_name TEXT DEFAULT '';
 ALTER TABLE daily_production ADD COLUMN IF NOT EXISTS branch_dispatches JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE daily_production ADD COLUMN IF NOT EXISTS total_dispatched NUMERIC DEFAULT 0;
+ALTER TABLE daily_production ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE daily_production ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
 -- ย้ายข้อมูลเก่าจาก dispatch_branch_a และ dispatch_branch_b เข้าสู่ branch_dispatches JSONB
 DO $$
@@ -445,12 +471,35 @@ CREATE TABLE IF NOT EXISTS stock_transactions (
   type TEXT NOT NULL CHECK (type IN ('Receive', 'Actual Usage')),
   rm_code TEXT NOT NULL,
   qty NUMERIC DEFAULT 0,
+  unit_price NUMERIC DEFAULT 0,
+  total_amount NUMERIC DEFAULT 0,
+  reason_type TEXT DEFAULT 'PRODUCTION',
+  lot_no TEXT DEFAULT '',
+  expiry_date TEXT,
   recorder TEXT,
   note TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_stock_tx_date ON stock_transactions(date);
 CREATE INDEX IF NOT EXISTS idx_stock_tx_rm_code ON stock_transactions(rm_code);
+
+-- อัปเกรดคอลัมน์ใหม่ใน master_materials และ stock_transactions
+ALTER TABLE master_materials ADD COLUMN IF NOT EXISTS unit_price NUMERIC DEFAULT 0;
+ALTER TABLE master_materials ADD COLUMN IF NOT EXISTS supplier_name TEXT DEFAULT '';
+ALTER TABLE master_materials ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE master_materials ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+ALTER TABLE stock_transactions ADD COLUMN IF NOT EXISTS unit_price NUMERIC DEFAULT 0;
+ALTER TABLE stock_transactions ADD COLUMN IF NOT EXISTS total_amount NUMERIC DEFAULT 0;
+ALTER TABLE stock_transactions ADD COLUMN IF NOT EXISTS reason_type TEXT DEFAULT 'PRODUCTION';
+ALTER TABLE stock_transactions ADD COLUMN IF NOT EXISTS lot_no TEXT DEFAULT '';
+ALTER TABLE stock_transactions ADD COLUMN IF NOT EXISTS expiry_date TEXT;
+ALTER TABLE stock_transactions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE stock_transactions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+ALTER TABLE bom_recipe ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE monthly_stock_counts ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
 
 -- 6. Table: monthly_stock_counts (ตรวจนับสต็อกจริงสิ้นเดือน)
 CREATE TABLE IF NOT EXISTS monthly_stock_counts (
@@ -565,6 +614,63 @@ CREATE POLICY "Allow anon all on stock_count_sessions" ON stock_count_sessions F
 ALTER TABLE system_settings ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon all on system_settings" ON system_settings;
 CREATE POLICY "Allow anon all on system_settings" ON system_settings FOR ALL USING (true) WITH CHECK (true);
+
+-- 12. Helper Views for Direct Inspection in Supabase Table Editor / Views (ดูย้อนหลังง่าย ไม่งง)
+DROP VIEW IF EXISTS view_daily_production_details CASCADE;
+CREATE OR REPLACE VIEW view_daily_production_details AS
+SELECT 
+  dp.id,
+  dp.date,
+  dp.product_code,
+  COALESCE(br.product_name, dp.product_code) AS product_name,
+  dp.produced_qty,
+  COALESCE(dp.producer_name, '') AS producer_name,
+  dp.total_dispatched,
+  dp.branch_dispatches,
+  dp.created_at,
+  dp.updated_at
+FROM daily_production dp
+LEFT JOIN (
+  SELECT DISTINCT product_code, product_name FROM bom_recipe
+) br ON dp.product_code = br.product_code
+ORDER BY dp.date DESC, dp.created_at DESC;
+
+DROP VIEW IF EXISTS view_stock_transactions_readable CASCADE;
+CREATE OR REPLACE VIEW view_stock_transactions_readable AS
+SELECT 
+  st.id,
+  st.date,
+  st.type,
+  st.rm_code,
+  COALESCE(mm.rm_name, st.rm_code) AS rm_name,
+  st.qty,
+  COALESCE(mm.unit, '') AS unit,
+  COALESCE(st.unit_price, 0) AS unit_price,
+  COALESCE(st.total_amount, 0) AS total_amount,
+  COALESCE(st.reason_type, 'PRODUCTION') AS reason_type,
+  COALESCE(st.lot_no, '') AS lot_no,
+  st.expiry_date,
+  st.recorder,
+  st.note,
+  st.created_at
+FROM stock_transactions st
+LEFT JOIN master_materials mm ON st.rm_code = mm.rm_code
+ORDER BY st.date DESC, st.created_at DESC;
+
+DROP VIEW IF EXISTS view_inventory_valuation CASCADE;
+CREATE OR REPLACE VIEW view_inventory_valuation AS
+SELECT 
+  mm.rm_code,
+  mm.rm_name,
+  mm.unit,
+  mm.opening_stock,
+  mm.safety_stock,
+  COALESCE(mm.unit_price, 0) AS unit_price,
+  COALESCE(mm.supplier_name, '') AS supplier_name,
+  ROUND(mm.opening_stock * COALESCE(mm.unit_price, 0), 2) AS opening_stock_value,
+  mm.updated_at
+FROM master_materials mm
+ORDER BY mm.rm_code ASC;
 `;
 
 /**
@@ -765,6 +871,8 @@ export async function fetchMasterMaterials(): Promise<MasterMaterial[]> {
       Unit: row.unit,
       Opening_Stock: Number(row.opening_stock) || 0,
       Safety_Stock: Number(row.safety_stock) || 0,
+      Unit_Price: row.unit_price !== undefined && row.unit_price !== null ? Number(row.unit_price) : undefined,
+      Supplier_Name: row.supplier_name || undefined,
     }));
   } catch (err: any) {
     console.warn('Notice: Network error fetching master_materials, using local data:', err?.message || err);
@@ -774,16 +882,40 @@ export async function fetchMasterMaterials(): Promise<MasterMaterial[]> {
 
 export async function upsertMasterMaterial(mat: MasterMaterial): Promise<void> {
   const supabase = getSupabaseClient();
-  const payload = {
+  const payload: Record<string, any> = {
     rm_code: mat.RM_Code.trim().toUpperCase(),
     rm_name: mat.RM_Name.trim(),
     unit: mat.Unit.trim(),
     opening_stock: Number(mat.Opening_Stock) || 0,
     safety_stock: Number(mat.Safety_Stock) || 0,
+    updated_at: new Date().toISOString(),
   };
+
+  if (mat.Unit_Price !== undefined && !isNaN(Number(mat.Unit_Price))) {
+    payload.unit_price = Number(mat.Unit_Price);
+  }
+  if (mat.Supplier_Name !== undefined) {
+    payload.supplier_name = mat.Supplier_Name.trim();
+  }
 
   const { error } = await supabase.from('master_materials').upsert(payload, { onConflict: 'rm_code' });
   if (error) {
+    // If unit_price or supplier_name does not exist in schema yet, fallback cleanly
+    if (error.code === 'PGRST204') {
+      const basicPayload = {
+        rm_code: mat.RM_Code.trim().toUpperCase(),
+        rm_name: mat.RM_Name.trim(),
+        unit: mat.Unit.trim(),
+        opening_stock: Number(mat.Opening_Stock) || 0,
+        safety_stock: Number(mat.Safety_Stock) || 0,
+      };
+      const { error: retryErr } = await supabase.from('master_materials').upsert(basicPayload, { onConflict: 'rm_code' });
+      if (retryErr) {
+        console.error('Error upserting basic master_materials:', retryErr);
+        throw retryErr;
+      }
+      return;
+    }
     console.error('Error upserting master_materials:', error);
     throw error;
   }
@@ -916,20 +1048,21 @@ export async function upsertBOMRecipe(recipe: BOMRecipe): Promise<{ id: string |
         .update(basePayload)
         .eq('id', existingId)
         .select('id')
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
-      return data?.id || existingId;
-    } else {
-      const { data, error } = await supabase
-        .from('bom_recipe')
-        .insert(basePayload)
-        .select('id')
-        .single();
-
-      if (error) throw error;
-      return data?.id;
+      if (data?.id) return data.id;
+      // If 0 rows were updated (row was deleted or ID doesn't exist), fall through to insert!
     }
+
+    const { data, error } = await supabase
+      .from('bom_recipe')
+      .insert(basePayload)
+      .select('id')
+      .single();
+
+    if (error) throw error;
+    return data?.id;
   };
 
   try {
@@ -1072,8 +1205,9 @@ export async function fetchDailyProductions(): Promise<DailyProduction[]> {
         Date: row.date,
         Product_Code: row.product_code,
         Produced_Qty: Number(row.produced_qty) || 0,
-        Dispatch_Branch_A: dispA,
-        Dispatch_Branch_B: dispB,
+        Producer_Name: row.producer_name || '',
+        Dispatch_Branch_A: Number(branchDispatches['BRANCH_A'] ?? dispA) || 0,
+        Dispatch_Branch_B: Number(branchDispatches['BRANCH_B'] ?? dispB) || 0,
         branch_dispatches: branchDispatches,
         Total_Dispatched: totalDisp,
       };
@@ -1091,11 +1225,11 @@ export async function saveDailyProduction(prod: DailyProduction): Promise<string
   const produced_qty = Number(prod.Produced_Qty) || 0;
   const branch_dispatches = { ...(prod.branch_dispatches || {}) };
 
-  // Support legacy fields if present
-  if (prod.Dispatch_Branch_A !== undefined && !branch_dispatches['BRANCH_A']) {
+  // Support legacy fields if present in object
+  if (prod.Dispatch_Branch_A !== undefined && branch_dispatches['BRANCH_A'] === undefined) {
     branch_dispatches['BRANCH_A'] = Number(prod.Dispatch_Branch_A) || 0;
   }
-  if (prod.Dispatch_Branch_B !== undefined && !branch_dispatches['BRANCH_B']) {
+  if (prod.Dispatch_Branch_B !== undefined && branch_dispatches['BRANCH_B'] === undefined) {
     branch_dispatches['BRANCH_B'] = Number(prod.Dispatch_Branch_B) || 0;
   }
 
@@ -1107,92 +1241,103 @@ export async function saveDailyProduction(prod: DailyProduction): Promise<string
     );
   }
 
-  // Modern Dynamic Payload (recommended for clean 10-table schema)
+  // Modern Dynamic Payload (Primary standard schema)
   const modernPayload: Record<string, any> = {
     date,
     product_code,
     produced_qty,
+    producer_name: (prod.Producer_Name || '').trim(),
     total_dispatched,
     branch_dispatches,
+    updated_at: new Date().toISOString(),
   };
 
-  // Combined Payload (for tables that contain both dynamic JSONB and legacy columns)
-  const combinedPayload: Record<string, any> = {
-    ...modernPayload,
-    dispatch_branch_a: Number(branch_dispatches['BRANCH_A'] ?? prod.Dispatch_Branch_A) || 0,
-    dispatch_branch_b: Number(branch_dispatches['BRANCH_B'] ?? prod.Dispatch_Branch_B) || 0,
-  };
+  // Determine existing row ID in database
+  let targetId: number | string | null = null;
 
-  // Legacy Payload (for older schemas with only branch_a and branch_b columns)
-  const legacyOnlyPayload: Record<string, any> = {
-    date,
-    product_code,
-    produced_qty,
-    dispatch_branch_a: Number(branch_dispatches['BRANCH_A'] ?? prod.Dispatch_Branch_A) || 0,
-    dispatch_branch_b: Number(branch_dispatches['BRANCH_B'] ?? prod.Dispatch_Branch_B) || 0,
-  };
+  // 1. First priority: look up by unique business key (date, product_code)
+  const { data: existingRows } = await supabase
+    .from('daily_production')
+    .select('id')
+    .eq('date', date)
+    .eq('product_code', product_code);
 
-  let numericId: number | null = null;
-  if (prod.id && /^\d+$/.test(String(prod.id))) {
-    numericId = Number(prod.id);
-  }
-
-  // Check if an existing record matches date & product_code (single production per product per day)
-  if (!numericId) {
-    const { data: existingRows } = await supabase
+  if (existingRows && existingRows.length > 0) {
+    targetId = existingRows[0].id;
+    // If multiple duplicates exist in DB, clean up extra ones
+    if (existingRows.length > 1) {
+      const extraIds = existingRows.slice(1).map((r: any) => r.id);
+      await supabase.from('daily_production').delete().in('id', extraIds);
+    }
+  } else if (prod.id && /^\d+$/.test(String(prod.id))) {
+    // If prod.id is a numeric id, verify it really exists in Supabase
+    const { data: byId } = await supabase
       .from('daily_production')
       .select('id')
-      .eq('date', date)
-      .eq('product_code', product_code);
-
-    if (existingRows && existingRows.length > 0) {
-      numericId = Number(existingRows[0].id);
-      // If there are duplicate rows in Supabase for this date & product, purge the extras immediately!
-      if (existingRows.length > 1) {
-        const extraIds = existingRows.slice(1).map((r: any) => r.id);
-        await supabase.from('daily_production').delete().in('id', extraIds);
-      }
+      .eq('id', Number(prod.id))
+      .maybeSingle();
+    if (byId?.id) {
+      targetId = byId.id;
     }
   }
 
-  const trySave = async (payload: Record<string, any>) => {
-    if (numericId) {
+  const executeSave = async (payload: Record<string, any>): Promise<string> => {
+    if (targetId) {
       const { data, error } = await supabase
         .from('daily_production')
         .update(payload)
-        .eq('id', numericId)
+        .eq('id', targetId)
         .select('id')
-        .single();
+        .maybeSingle();
+
       if (error) throw error;
-      return String(data?.id || numericId);
-    } else {
-      const { data, error } = await supabase
-        .from('daily_production')
-        .insert(payload)
-        .select('id')
-        .single();
-      if (error) throw error;
-      return String(data?.id);
+      if (data?.id) return String(data.id);
+      // If 0 rows updated (row was deleted or ID not found), fall through to insert!
     }
+
+    const { data, error } = await supabase
+      .from('daily_production')
+      .insert(payload)
+      .select('id')
+      .single();
+
+    if (error) throw error;
+    return String(data?.id);
   };
 
   try {
-    // 1. First attempt: Modern dynamic payload (clean schema with branch_dispatches JSONB)
-    return await trySave(modernPayload);
+    // 1. Primary: Save with modern dynamic branch_dispatches & producer_name payload
+    return await executeSave(modernPayload);
   } catch (err: any) {
     const msg = String(err?.message || '');
-    // If the table lacks branch_dispatches / total_dispatched column, fall back to legacy columns
-    if (msg.includes('branch_dispatches') || msg.includes('total_dispatched')) {
-      console.warn('daily_production table lacks branch_dispatches, falling back to legacy schema:', msg);
-      return await trySave(legacyOnlyPayload);
+    const code = String(err?.code || '');
+
+    // If producer_name is not yet in the DB schema, strip it and retry
+    if (code === 'PGRST204' && msg.includes('producer_name')) {
+      const retryPayload = { ...modernPayload };
+      delete retryPayload.producer_name;
+      try {
+        return await executeSave(retryPayload);
+      } catch (innerErr: any) {
+        // Fall through to check legacy branch columns
+      }
     }
-    // If the table has NOT NULL constraints on legacy columns, retry with combined payload
-    try {
-      return await trySave(combinedPayload);
-    } catch (retryErr: any) {
-      console.error('Error saving daily_production in Supabase:', retryErr);
-      throw retryErr;
+
+    // ONLY fallback to legacy columns if table explicitly lacks branch_dispatches column in database
+    if (code === 'PGRST204' && (msg.includes('branch_dispatches') || msg.includes('total_dispatched'))) {
+      console.warn('daily_production table lacks branch_dispatches, trying legacy columns:', msg);
+      const legacyPayload: Record<string, any> = {
+        date,
+        product_code,
+        produced_qty,
+        dispatch_branch_a: Number(branch_dispatches['BRANCH_A'] ?? prod.Dispatch_Branch_A) || 0,
+        dispatch_branch_b: Number(branch_dispatches['BRANCH_B'] ?? prod.Dispatch_Branch_B) || 0,
+      };
+      return await executeSave(legacyPayload);
     }
+
+    console.error('Error saving daily_production in Supabase:', err);
+    throw err;
   }
 }
 
@@ -1269,6 +1414,11 @@ export async function fetchStockTransactions(): Promise<StockTransaction[]> {
       Qty: Number(row.qty) || 0,
       Recorder: row.recorder || '',
       Note: row.note || '',
+      Unit_Price: row.unit_price !== undefined && row.unit_price !== null ? Number(row.unit_price) : undefined,
+      Total_Amount: row.total_amount !== undefined && row.total_amount !== null ? Number(row.total_amount) : undefined,
+      Reason_Type: row.reason_type || undefined,
+      Lot_No: row.lot_no || undefined,
+      Expiry_Date: row.expiry_date || undefined,
     }));
   } catch (err: any) {
     console.warn('Notice: Network error fetching stock_transactions, using local data:', err?.message || err);
@@ -1306,24 +1456,43 @@ export async function saveStockTransaction(tx: StockTransaction): Promise<string
     qty,
     recorder,
     note,
+    updated_at: new Date().toISOString(),
   };
 
-  let existingId: string | null = null;
+  if (tx.Unit_Price !== undefined && !isNaN(Number(tx.Unit_Price))) {
+    payload.unit_price = Number(tx.Unit_Price);
+  }
+  if (tx.Total_Amount !== undefined && !isNaN(Number(tx.Total_Amount))) {
+    payload.total_amount = Number(tx.Total_Amount);
+  } else if (payload.unit_price && payload.qty) {
+    payload.total_amount = Number((payload.unit_price * payload.qty).toFixed(2));
+  }
+  if (tx.Reason_Type) {
+    payload.reason_type = tx.Reason_Type;
+  }
+  if (tx.Lot_No) {
+    payload.lot_no = tx.Lot_No.trim();
+  }
+  if (tx.Expiry_Date) {
+    payload.expiry_date = tx.Expiry_Date.trim();
+  }
+
+  let targetId: number | string | null = null;
+
+  // 1. If tx.id is numeric, verify whether it truly exists in Supabase
   if (tx.id && /^\d+$/.test(String(tx.id))) {
-    existingId = String(tx.id);
-  } else if (tx.id) {
     const { data: byId } = await supabase
       .from('stock_transactions')
       .select('id')
-      .eq('id', tx.id)
-      .limit(1);
-    if (byId && byId.length > 0) {
-      existingId = String(byId[0].id);
+      .eq('id', Number(tx.id))
+      .maybeSingle();
+    if (byId?.id) {
+      targetId = byId.id;
     }
   }
 
-  // If no ID match, check if this exact transaction already exists by attributes
-  if (!existingId) {
+  // 2. If no verified ID, check if this exact transaction already exists by attributes
+  if (!targetId) {
     let checkQuery = supabase
       .from('stock_transactions')
       .select('id')
@@ -1338,7 +1507,7 @@ export async function saveStockTransaction(tx: StockTransaction): Promise<string
 
     const { data: existingRows } = await checkQuery;
     if (existingRows && existingRows.length > 0) {
-      existingId = String(existingRows[0].id);
+      targetId = existingRows[0].id;
       // Clean up any extra duplicate rows in database if they were created earlier
       if (existingRows.length > 1) {
         const extraIds = existingRows.slice(1).map((r: any) => r.id);
@@ -1347,31 +1516,53 @@ export async function saveStockTransaction(tx: StockTransaction): Promise<string
     }
   }
 
-  if (existingId) {
+  const executeTxSave = async (pl: Record<string, any>): Promise<string> => {
+    // 3. Update if existing targetId found, or Insert if new
+    if (targetId) {
+      const { data, error } = await supabase
+        .from('stock_transactions')
+        .update(pl)
+        .eq('id', targetId)
+        .select('id')
+        .maybeSingle();
+
+      if (error) {
+        if (error.code === 'PGRST204') throw error;
+        console.warn('Notice: Failed to update stock_transactions, attempting insert instead:', error);
+      } else if (data?.id) {
+        return String(data.id);
+      }
+      // If update returned 0 rows (data is null), fall through to insert!
+    }
+
+    // Insert branch
     const { data, error } = await supabase
       .from('stock_transactions')
-      .update(payload)
-      .eq('id', existingId)
+      .insert(pl)
       .select('id')
       .single();
 
-    if (error) {
-      console.error('Error updating stock_transactions in Supabase:', error);
-      throw error;
-    }
-    return String(data?.id || existingId);
-  } else {
-    const { data, error } = await supabase
-      .from('stock_transactions')
-      .insert(payload)
-      .select('id')
-      .single();
-
-    if (error) {
-      console.error('Error inserting stock_transactions in Supabase:', error);
-      throw error;
-    }
+    if (error) throw error;
     return String(data?.id);
+  };
+
+  try {
+    return await executeTxSave(payload);
+  } catch (err: any) {
+    // If new columns are missing in remote DB, strip them and retry
+    if (err?.code === 'PGRST204') {
+      const basicPayload: Record<string, any> = {
+        date,
+        type,
+        rm_code,
+        qty,
+        recorder,
+        note,
+      };
+      return await executeTxSave(basicPayload);
+    }
+    console.error('Error inserting stock_transactions in Supabase:', err);
+    throw err;
   }
 }
 
@@ -1549,6 +1740,27 @@ export async function closeMonthlyStockReconciliation(params: {
       console.warn(`Failed to update opening_stock for ${rmCode}:`, updateErr);
     }
   }
+
+  // 3. Automatically record session header into stock_count_sessions
+  try {
+    const month = countDate.substring(0, 7);
+    const discrepancyCount = items.filter(
+      (it) => Math.abs((Number(it.Counted_Qty) || 0) - (Number(it.System_Qty) || 0)) > 0.001
+    ).length;
+    const sessionId = `sess_${countDate.replace(/[^0-9]/g, '')}`;
+    await supabase.from('stock_count_sessions').upsert({
+      id: sessionId,
+      month,
+      count_date: countDate,
+      counted_by: recorder.trim() || 'ผู้ตรวจนับ',
+      total_items_counted: items.length,
+      discrepancy_items_count: discrepancyCount,
+      status: 'completed',
+      note: (note || '').trim(),
+    });
+  } catch (sessErr) {
+    console.warn('Note: stock_count_sessions upsert notice:', sessErr);
+  }
 }
 
 /**
@@ -1609,7 +1821,7 @@ export async function seedInitialDataToSupabase(
 
     if (modernProdRows.length > 0) {
       const { error: insertErr } = await supabase.from('daily_production').insert(modernProdRows);
-      if (insertErr) {
+      if (insertErr && (insertErr.code === 'PGRST204' || insertErr.message?.includes('branch_dispatches'))) {
         // Fallback for older database tables that have dispatch_branch_a and dispatch_branch_b
         const legacyRows = productions.map((p) => ({
           date: p.Date,

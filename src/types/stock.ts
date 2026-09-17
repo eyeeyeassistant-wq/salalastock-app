@@ -5,6 +5,8 @@ export interface MasterMaterial {
   Unit: string;
   Opening_Stock: number;
   Safety_Stock: number;
+  Unit_Price?: number; // ราคาต้นทุนต่อหน่วย (บาท)
+  Supplier_Name?: string; // ซัพพลายเออร์ / ร้านค้าที่ซื้อ
 }
 
 export interface BOMRecipe {
@@ -36,9 +38,17 @@ export interface DailyProduction {
   Total_Dispatched?: number; // Formula: Dispatch_A + Dispatch_B + other branches
   Total_Leftover?: number; // Formula: Leftover_A + Leftover_B
   branch_dispatches?: Record<string, number>; // Dynamic dispatches per branch: { [branch_code]: quantity }
+  Producer_Name?: string; // ผู้ผลิต / ผู้รับผิดชอบเมนูในแต่ละวัน (Chef / Operator / Shift)
 }
 
 export type TransactionType = 'Receive' | 'Actual Usage';
+
+export type UsageReasonType =
+  | 'PRODUCTION'
+  | 'WASTE_SPOILED'
+  | 'SAMPLE_TEST'
+  | 'ADJUSTMENT'
+  | 'OTHER';
 
 export interface StockTransaction {
   id?: string;
@@ -49,6 +59,11 @@ export interface StockTransaction {
   Recorder: string;
   Note: string;
   productionId?: string;
+  Unit_Price?: number; // ราคาซื้อต่อหน่วย (บาท)
+  Total_Amount?: number; // ราคารวม (บาท)
+  Reason_Type?: UsageReasonType | string; // เหตุผลการเบิก / ประเภทความเคลื่อนไหว
+  Lot_No?: string; // เลขล็อต (Lot Number)
+  Expiry_Date?: string; // วันหมดอายุ (Expiry Date: YYYY-MM-DD)
 }
 
 export interface PhysicalStockCountItem {

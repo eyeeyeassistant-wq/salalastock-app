@@ -32,12 +32,16 @@ import {
   RefreshCw,
   FileSpreadsheet,
   Check,
+  UserCheck,
 } from 'lucide-react';
 import {
   calculateMonthlyProductionSummaries,
   getAvailableMonths,
 } from '../utils/calculations';
-import { exportMonthlyProductionSummaryToExcel } from '../services/excelExport';
+import {
+  exportMonthlyProductionSummaryToExcel,
+  exportDailyProductionToExcel,
+} from '../services/excelExport';
 import {
   saveMonthlyProductionSummaries,
   fetchMonthlyProductionSummaries,
@@ -339,8 +343,22 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
               )}
             </div>
 
-            <div className="text-xs text-slate-500 font-medium">
-              แสดงรายการบันทึกรายวัน <span className="font-bold text-slate-800">{filteredProductions.length}</span> รายการ
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-slate-500 font-medium hidden sm:inline">
+                แสดงบันทึกรายวัน <span className="font-bold text-slate-800">{filteredProductions.length}</span> รายการ
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  exportDailyProductionToExcel(filteredProductions, recipes, displayBranches);
+                  onShowNotification?.('📊 ส่งออกตารางบันทึกการผลิตเป็น Excel สำเร็จ');
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 shadow-2xs transition-colors"
+                title="ดาวน์โหลดตารางการผลิตรายวันเป็นไฟล์ Excel (.xlsx)"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>โหลด Excel</span>
+              </button>
             </div>
           </div>
 
@@ -403,7 +421,13 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
                           {p.Product_Code}
                         </td>
                         <td className="px-4 py-3.5 font-medium text-slate-900 text-xs sm:text-sm">
-                          {getProductName(p.Product_Code)}
+                          <div>{getProductName(p.Product_Code)}</div>
+                          {p.Producer_Name && (
+                            <div className="inline-flex items-center gap-1 text-[11px] text-blue-700 font-normal mt-0.5 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                              <UserCheck className="w-3 h-3 text-blue-600 shrink-0" />
+                              <span>{p.Producer_Name}</span>
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3.5 text-right font-mono font-bold text-blue-700 text-xs sm:text-sm bg-blue-50/30">
                           {p.Produced_Qty.toLocaleString()}

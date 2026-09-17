@@ -87,11 +87,13 @@ import { OpeningStockModal } from './components/OpeningStockModal';
 import { PhysicalStockCountTab } from './components/PhysicalStockCountTab';
 import { ClearDataModal } from './components/ClearDataModal';
 import { AdminAuthModal } from './components/AdminAuthModal';
+import { ExportExcelModal } from './components/ExportExcelModal';
 
 export default function App() {
   const [userRole, setUserRole] = useState<UserRole>('staff');
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [activeFilter, setActiveFilter] = useState<'all' | 'lowStock' | 'overused'>('all');
+  const [isExportExcelModalOpen, setIsExportExcelModalOpen] = useState(false);
 
   // Admin Auth Gate State
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
@@ -1367,6 +1369,7 @@ export default function App() {
         onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
         onOpenLineNotifyModal={() => setIsLineNotifyModalOpen(true)}
         onOpenFormulaModal={() => setIsFormulaModalOpen(true)}
+        onOpenExportExcelModal={() => setIsExportExcelModalOpen(true)}
         onOpenNewTxModal={() => {
           setInitialTxType('Receive');
           setIsNewTxModalOpen(true);
@@ -1411,6 +1414,7 @@ export default function App() {
             onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
             onOpenLineNotifyModal={() => setIsLineNotifyModalOpen(true)}
             onOpenFormulaGuide={() => setIsFormulaModalOpen(true)}
+            onOpenExportExcelModal={() => setIsExportExcelModalOpen(true)}
             onSelectMaterialDetail={(code) => setSelectedMaterialDetail(code)}
             onNavigateToTab={(tabName) => setActiveTab(tabName)}
           />
@@ -1680,6 +1684,19 @@ export default function App() {
         isOpen={isLineNotifyModalOpen}
         onClose={() => setIsLineNotifyModalOpen(false)}
         summaries={summaries}
+        onShowNotification={showNotification}
+      />
+
+      <ExportExcelModal
+        isOpen={isExportExcelModalOpen}
+        onClose={() => setIsExportExcelModalOpen(false)}
+        materials={materials}
+        recipes={recipes}
+        productions={productions}
+        transactions={transactions}
+        summaries={summaries}
+        countRecords={stockCountRecords}
+        branches={branches}
         onShowNotification={showNotification}
       />
     </div>

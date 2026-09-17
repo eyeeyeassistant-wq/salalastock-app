@@ -8,6 +8,7 @@ import {
   Check,
   Package,
   Store,
+  UserCheck,
 } from 'lucide-react';
 
 interface NewProductionModalProps {
@@ -46,6 +47,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
 
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [productCode, setProductCode] = useState(productCodes[0] || '');
+  const [producerName, setProducerName] = useState('');
   const [producedQtyStr, setProducedQtyStr] = useState<string>('50');
   const [branchDispatches, setBranchDispatches] = useState<Record<string, string>>({});
   const [autoDeduct, setAutoDeduct] = useState(false);
@@ -57,6 +59,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
       if (initialData) {
         setDate(initialData.Date);
         setProductCode(initialData.Product_Code);
+        setProducerName(initialData.Producer_Name || '');
         setProducedQtyStr(initialData.Produced_Qty.toString());
         
         const map: Record<string, string> = {};
@@ -76,6 +79,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
       } else {
         setDate(new Date().toISOString().split('T')[0]);
         setProductCode(productCodes[0] || '');
+        setProducerName('');
         setProducedQtyStr('50');
         
         const map: Record<string, string> = {};
@@ -138,6 +142,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
         Date: date,
         Product_Code: productCode,
         Produced_Qty: numProduced,
+        Producer_Name: producerName.trim(),
         Dispatch_Branch_A: numA,
         Dispatch_Branch_B: numB,
         Leftover_Branch_A: 0,
@@ -219,6 +224,26 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
                 })}
               </select>
             </div>
+          </div>
+
+          {/* Producer / Chef in Charge */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <UserCheck className="w-3.5 h-3.5 text-blue-600" />
+                ผู้ผลิต / เชฟผู้รับผิดชอบกะ (Producer Name)
+              </span>
+              <span className="text-[11px] text-slate-400 font-normal">
+                (การผลิตหมุนเวียนคน)
+              </span>
+            </label>
+            <input
+              type="text"
+              value={producerName}
+              onChange={(e) => setProducerName(e.target.value)}
+              placeholder="เช่น เชฟสมชาย, แอน (กะเช้า), ทีมเบเกอรี่ 1"
+              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+            />
           </div>
 
           {/* Produced Qty (Direct Typing) */}

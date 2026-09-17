@@ -24,6 +24,7 @@ import {
   Menu,
   Bell,
   Store,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { ActiveTab, UserRole } from '../types/stock';
 
@@ -40,6 +41,7 @@ interface NavbarProps {
   onOpenSupabaseModal: () => void;
   onOpenLineNotifyModal: () => void;
   onOpenFormulaModal: () => void;
+  onOpenExportExcelModal: () => void;
   onOpenNewTxModal: () => void;
   onOpenNewProdModal: () => void;
   onOpenOpeningStockModal: () => void;
@@ -61,6 +63,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenSupabaseModal,
   onOpenLineNotifyModal,
   onOpenFormulaModal,
+  onOpenExportExcelModal,
   onOpenNewTxModal,
   onOpenNewProdModal,
   onOpenOpeningStockModal,
@@ -320,6 +323,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span>เคลียร์ข้อมูล</span>
               </button>
             )}
+
+            {/* Excel Export Button */}
+            <button
+              onClick={onOpenExportExcelModal}
+              id="btn-export-excel-navbar"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-950/70 hover:bg-emerald-900/90 text-emerald-200 border border-emerald-600/50 transition-colors min-h-[36px] shadow-xs"
+              title="ดาวน์โหลดข้อมูลระบบทั้งหมดเป็นไฟล์ Excel (.xlsx)"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">โหลด Excel</span>
+            </button>
 
             {/* LINE Notify Button */}
             <button
