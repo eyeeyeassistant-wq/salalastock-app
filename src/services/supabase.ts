@@ -969,6 +969,8 @@ export async function fetchBOMRecipes(): Promise<BOMRecipe[]> {
             ? row.quantity_per_unit
             : row.standard_qty
         ) || 0,
+      effective_date: row.effective_date || undefined,
+      note: row.note || undefined,
     }));
   } catch (err: any) {
     console.warn('Notice: Network error fetching bom_recipe, using local data:', err?.message || err);
@@ -1041,6 +1043,13 @@ export async function upsertBOMRecipe(recipe: BOMRecipe): Promise<{ id: string |
       rm_code: rmCode,
       [qtyCol]: qty,
     };
+
+    if (recipe.effective_date) {
+      basePayload.effective_date = recipe.effective_date;
+    }
+    if (recipe.note) {
+      basePayload.note = recipe.note;
+    }
 
     if (existingId) {
       const { data, error } = await supabase

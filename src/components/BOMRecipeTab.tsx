@@ -4,7 +4,6 @@ import {
   Sparkles,
   Plus,
   Search,
-  Calculator,
   Layers,
   ChevronRight,
   ChevronDown,
@@ -13,6 +12,8 @@ import {
   Package,
   Trash2,
   AlertCircle,
+  Calendar,
+  FileText,
 } from 'lucide-react';
 
 interface BOMRecipeTabProps {
@@ -43,6 +44,8 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
   const [newProdName, setNewProdName] = useState('');
   const [newRMCode, setNewRMCode] = useState(materials[0]?.RM_Code || '');
   const [newStandardQtyStr, setNewStandardQtyStr] = useState<string>('0.1');
+  const [newEffectiveDate, setNewEffectiveDate] = useState<string>('');
+  const [newNote, setNewNote] = useState<string>('');
   const [formError, setFormError] = useState<string | null>(null);
 
   // Searchable Raw Material Dropdown State
@@ -56,10 +59,6 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
       setNewRMCode(materials[0].RM_Code);
     }
   }, [materials, newRMCode]);
-
-  // Simulation Calculator state
-  const [simProduct, setSimProduct] = useState(recipes[0]?.Product_Code || '');
-  const [simQty, setSimQty] = useState<number>(100);
 
   // Grouped products
   const productCodes: string[] = Array.from(new Set(recipes.map((r) => r.Product_Code)));
@@ -176,6 +175,8 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
       Product_Name: cleanProdName,
       RM_Code: verifiedRMCode,
       Standard_Qty: qty,
+      effective_date: newEffectiveDate.trim() || undefined,
+      note: newNote.trim() || undefined,
     });
 
     // Reset filters to ensure the saved product card is visible immediately
@@ -183,6 +184,8 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
     setSearchTerm('');
 
     setNewStandardQtyStr('0.1');
+    setNewEffectiveDate('');
+    setNewNote('');
     setIsAdding(false);
     setIsRMDropdownOpen(false);
     setSearchRMText('');
@@ -197,16 +200,6 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
     const mat = materials.find((m) => m.RM_Code === rmCode);
     return mat ? mat.Unit : '';
   };
-
-  // Sim ingredients
-  const simIngredients = recipes
-    .filter((r) => r.Product_Code === simProduct)
-    .map((r) => ({
-      ...r,
-      totalNeeded: (r.Standard_Qty * simQty).toFixed(3),
-      unit: getMaterialUnit(r.RM_Code),
-      matName: getMaterialName(r.RM_Code),
-    }));
 
   return (
     <div className="space-y-6">
@@ -483,6 +476,41 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
             </div>
           </div>
 
+          {/* Effective Date & Note for Formula Versioning */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-100">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                <span>วันที่มีผลบังคับใช้ (Effective Date)</span>
+              </label>
+              <input
+                type="date"
+                value={newEffectiveDate}
+                onChange={(e) => setNewEffectiveDate(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                เว้นว่างไว้หากต้องการให้มีผลบังคับใช้ทันทีกับทุกยอดผลิต
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                <FileText className="w-3.5 h-3.5 text-slate-500" />
+                <span>บันทึกเหตุผลการปรับปรุงสูตร (Note)</span>
+              </label>
+              <input
+                type="text"
+                placeholder="เช่น ปรับลดหวาน, เปลี่ยนสูตรแป้งใหม่"
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                บันทึกอ้างอิงสำหรับการตรวจสอบประวัติสูตร
+              </p>
+            </div>
+          </div>
+
           {formError && (
             <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center gap-2 animate-in fade-in duration-150">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
@@ -579,6 +607,21 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
                           <div className="text-slate-600 text-[11px]">
                             {getMaterialName(item.RM_Code)}
                           </div>
+                          {(item.effective_date || item.note) && (
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              {item.effective_date && (
+                                <span className="inline-flex items-center gap-0.5 text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                                  <Calendar className="w-2.5 h-2.5" />
+                                  มีผล: {item.effective_date}
+                                </span>
+                              )}
+                              {item.note && (
+                                <span className="text-[10px] text-slate-400 italic truncate max-w-[140px]" title={item.note}>
+                                  ({item.note})
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="text-right">
@@ -610,83 +653,10 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
                     ))}
                   </div>
                 </div>
-
-                <div className="p-3 bg-slate-50 border-t border-slate-200 text-center">
-                  <button
-                    onClick={() => {
-                      setSimProduct(code);
-                      setSimQty(50);
-                    }}
-                    className="text-xs font-semibold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1 transition-colors"
-                  >
-                    <Calculator className="w-3.5 h-3.5" />
-                    จำลองคำนวณวัตถุดิบสำหรับสินค้านี้
-                  </button>
-                </div>
               </div>
             );
           })
         )}
-      </div>
-
-      {/* Interactive Batch Simulation Calculator */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
-              <Calculator className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">
-                เครื่องมือจำลองการใช้วัตถุดิบตามยอดผลิต (Batch Ingredient Estimator)
-              </h3>
-              <p className="text-xs text-slate-500">
-                คำนวณสูตร Standard_Qty x Produced_Qty ตรงตามสูตร Expected_Usage
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <select
-              value={simProduct}
-              onChange={(e) => setSimProduct(e.target.value)}
-              className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {productCodes.map((code) => {
-                const r = recipes.find((i) => i.Product_Code === code);
-                return (
-                  <option key={code} value={code}>
-                    {code} - {r?.Product_Name}
-                  </option>
-                );
-              })}
-            </select>
-            <div className="flex items-center gap-1">
-              <input
-                type="number"
-                min="1"
-                inputMode="numeric"
-                value={simQty}
-                onFocus={(e) => e.target.select()}
-                onChange={(e) => setSimQty(Math.max(1, parseInt(e.target.value) || 1))}
-                className="w-24 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-xs text-slate-700 font-medium">ชิ้น</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {simIngredients.map((item, idx) => (
-            <div key={idx} className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-              <div className="text-[11px] font-mono text-blue-600 font-bold">{item.RM_Code}</div>
-              <div className="text-xs font-semibold text-slate-800 truncate">{item.matName}</div>
-              <div className="mt-1 text-sm font-bold text-slate-900 font-mono">
-                {item.totalNeeded} <span className="text-xs text-slate-500 font-normal">{item.unit}</span>
-              </div>
-            </div>
-          ))}
-        </div>
       </div>
 
       {/* In-App Delete Recipe Item Confirmation Modal */}
