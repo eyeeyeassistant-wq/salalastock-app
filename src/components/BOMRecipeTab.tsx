@@ -12,8 +12,6 @@ import {
   Package,
   Trash2,
   AlertCircle,
-  Calendar,
-  FileText,
 } from 'lucide-react';
 
 interface BOMRecipeTabProps {
@@ -44,8 +42,6 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
   const [newProdName, setNewProdName] = useState('');
   const [newRMCode, setNewRMCode] = useState(materials[0]?.RM_Code || '');
   const [newStandardQtyStr, setNewStandardQtyStr] = useState<string>('0.1');
-  const [newEffectiveDate, setNewEffectiveDate] = useState<string>('');
-  const [newNote, setNewNote] = useState<string>('');
   const [formError, setFormError] = useState<string | null>(null);
 
   // Searchable Raw Material Dropdown State
@@ -175,8 +171,6 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
       Product_Name: cleanProdName,
       RM_Code: verifiedRMCode,
       Standard_Qty: qty,
-      effective_date: newEffectiveDate.trim() || undefined,
-      note: newNote.trim() || undefined,
     });
 
     // Reset filters to ensure the saved product card is visible immediately
@@ -184,8 +178,6 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
     setSearchTerm('');
 
     setNewStandardQtyStr('0.1');
-    setNewEffectiveDate('');
-    setNewNote('');
     setIsAdding(false);
     setIsRMDropdownOpen(false);
     setSearchRMText('');
@@ -476,41 +468,6 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
             </div>
           </div>
 
-          {/* Effective Date & Note for Formula Versioning */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-100">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-blue-600" />
-                <span>วันที่มีผลบังคับใช้ (Effective Date)</span>
-              </label>
-              <input
-                type="date"
-                value={newEffectiveDate}
-                onChange={(e) => setNewEffectiveDate(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-[10px] text-slate-400 mt-0.5">
-                เว้นว่างไว้หากต้องการให้มีผลบังคับใช้ทันทีกับทุกยอดผลิต
-              </p>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                <FileText className="w-3.5 h-3.5 text-slate-500" />
-                <span>บันทึกเหตุผลการปรับปรุงสูตร (Note)</span>
-              </label>
-              <input
-                type="text"
-                placeholder="เช่น ปรับลดหวาน, เปลี่ยนสูตรแป้งใหม่"
-                value={newNote}
-                onChange={(e) => setNewNote(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-[10px] text-slate-400 mt-0.5">
-                บันทึกอ้างอิงสำหรับการตรวจสอบประวัติสูตร
-              </p>
-            </div>
-          </div>
-
           {formError && (
             <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center gap-2 animate-in fade-in duration-150">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
@@ -607,21 +564,6 @@ export const BOMRecipeTab: React.FC<BOMRecipeTabProps> = ({
                           <div className="text-slate-600 text-[11px]">
                             {getMaterialName(item.RM_Code)}
                           </div>
-                          {(item.effective_date || item.note) && (
-                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                              {item.effective_date && (
-                                <span className="inline-flex items-center gap-0.5 text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200">
-                                  <Calendar className="w-2.5 h-2.5" />
-                                  มีผล: {item.effective_date}
-                                </span>
-                              )}
-                              {item.note && (
-                                <span className="text-[10px] text-slate-400 italic truncate max-w-[140px]" title={item.note}>
-                                  ({item.note})
-                                </span>
-                              )}
-                            </div>
-                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="text-right">

@@ -1029,9 +1029,9 @@ export async function upsertBOMRecipe(recipe: BOMRecipe): Promise<{ id: string |
     } else {
       checkQuery = checkQuery.eq('product_name', pName);
     }
-    const { data: byKey } = await checkQuery.maybeSingle();
-    if (byKey?.id) {
-      existingId = byKey.id;
+    const { data: existingRows } = await checkQuery.limit(1);
+    if (existingRows && existingRows.length > 0) {
+      existingId = existingRows[0].id;
     }
   }
 
@@ -1043,13 +1043,6 @@ export async function upsertBOMRecipe(recipe: BOMRecipe): Promise<{ id: string |
       rm_code: rmCode,
       [qtyCol]: qty,
     };
-
-    if (recipe.effective_date) {
-      basePayload.effective_date = recipe.effective_date;
-    }
-    if (recipe.note) {
-      basePayload.note = recipe.note;
-    }
 
     if (existingId) {
       const { data, error } = await supabase

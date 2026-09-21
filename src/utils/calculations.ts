@@ -83,23 +83,17 @@ export function sanitizeMaterials(materials: MasterMaterial[] = []): MasterMater
 }
 
 /**
- * Get active BOM recipes for a given target date (YYYY-MM-DD)
- * If a recipe has effective_date, it is active on or after that date.
- * If multiple versions exist for the same Product_Code + RM_Code, the one with
- * the most recent effective_date (<= targetDate) is selected.
+ * Get active BOM recipes (standardized per Product_Code + RM_Code)
  */
 export function getEffectiveRecipesForDate(
   recipes: BOMRecipe[] = [],
-  targetDate?: string
+  _targetDate?: string
 ): BOMRecipe[] {
   const safeRecipes = Array.isArray(recipes) ? recipes : [];
   if (safeRecipes.length === 0) return [];
 
-  // If no target date provided, use today's date
-  const dateStr = (targetDate || new Date().toISOString().split('T')[0]).trim();
-
   // Group recipes by `${Product_Code}___${RM_Code}`
-  const groups = new Map<string, BOMRecipe[]>();
+  const map = new Map<string, BOMRecipe>();
 
   safeRecipes.forEach((r) => {
     if (!r || !r.Product_Code || !r.RM_Code) return;
@@ -108,49 +102,14 @@ export function getEffectiveRecipesForDate(
     if (!pCode || !rmCode) return;
 
     const key = `${pCode}___${rmCode}`;
-    if (!groups.has(key)) {
-      groups.set(key, []);
-    }
-    groups.get(key)!.push(r);
+    map.set(key, r);
   });
 
-  const effectiveRecipes: BOMRecipe[] = [];
-
-  groups.forEach((items) => {
-    // Filter to recipes where effective_date <= dateStr (or no effective_date specified, which acts as baseline)
-    const validItems = items.filter((item) => {
-      const eff = item.effective_date ? String(item.effective_date).trim() : '';
-      if (!eff) return true; // Baseline recipe (always valid if no dated override applies)
-      return eff <= dateStr;
-    });
-
-    if (validItems.length === 0) {
-      // If none are on or before dateStr, take the earliest version available so we still have a recipe
-      const sortedByDate = [...items].sort((a, b) =>
-        String(a.effective_date || '').localeCompare(String(b.effective_date || ''))
-      );
-      effectiveRecipes.push(sortedByDate[0]);
-      return;
-    }
-
-    // Sort: items with effective_date come first (descending by effective_date), baseline without effective_date last
-    validItems.sort((a, b) => {
-      const dateA = a.effective_date ? String(a.effective_date).trim() : '';
-      const dateB = b.effective_date ? String(b.effective_date).trim() : '';
-      if (dateA && dateB) return dateB.localeCompare(dateA); // Most recent date first
-      if (dateA && !dateB) return -1; // Dated version takes priority over baseline
-      if (!dateA && dateB) return 1;
-      return 0;
-    });
-
-    effectiveRecipes.push(validItems[0]);
-  });
-
-  return effectiveRecipes;
+  return Array.from(map.values());
 }
 
 /**
- * Sanitize and deduplicate recipes by Product_Code + RM_Code + effective_date
+ * Sanitize and deduplicate recipes by Product_Code + RM_Code
  */
 export function sanitizeRecipes(recipes: BOMRecipe[] = []): BOMRecipe[] {
   const safeRecipes = Array.isArray(recipes) ? recipes : [];
@@ -162,27 +121,24 @@ export function sanitizeRecipes(recipes: BOMRecipe[] = []): BOMRecipe[] {
     const rmCode = String(r.RM_Code).trim().toUpperCase();
     if (!pCode || !rmCode) return;
 
-    const effDate = r.effective_date ? String(r.effective_date).trim() : '';
-    const key = `${pCode}___${rmCode}___${effDate}`;
+    const key = `${pCode}___${rmCode}`;
     const existing = map.get(key);
     const stdQty = Number(r.Standard_Qty) || 0;
 
     if (!existing) {
       map.set(key, {
-        id: r.id || `recipe_${pCode}_${rmCode}_${effDate || 'base'}_${idx}`,
+        id: r.id || `recipe_${pCode}_${rmCode}_${idx}`,
         Product_Code: pCode,
         Product_Name: String(r.Product_Name || '').trim(),
         RM_Code: rmCode,
         Standard_Qty: stdQty,
-        effective_date: effDate || undefined,
-        note: r.note ? String(r.note).trim() : undefined,
       });
     } else {
       map.set(key, {
         ...existing,
+        id: r.id && /^\d+$/.test(String(r.id)) ? String(r.id) : existing.id,
         Product_Name: r.Product_Name && String(r.Product_Name).trim() ? String(r.Product_Name).trim() : existing.Product_Name,
         Standard_Qty: stdQty > 0 ? stdQty : existing.Standard_Qty,
-        note: r.note && String(r.note).trim() ? String(r.note).trim() : existing.note,
       });
     }
   });
