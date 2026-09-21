@@ -555,7 +555,7 @@ export const PhysicalStockCountTab: React.FC<PhysicalStockCountTabProps> = ({
                 <span>ยกยอดนับจริงนี้ไปเป็นยอดยกมาต้นเดือนถัดไป (Roll-over to Next Month Opening Stock)</span>
               </div>
               <p className="text-slate-600 mt-0.5 leading-relaxed">
-                เมื่อเปิดใช้งาน ระบบจะนำยอดนับจริงนี้ไปอัปเดตเป็น <b>ยอดยกมา (Opening Stock)</b> ในทะเบียนวัตถุดิบและ Google Sheets ของคุณให้อัตโนมัติ
+                เมื่อเปิดใช้งาน ระบบจะนำยอดนับจริงนี้ไปอัปเดตเป็น <b>ยอดยกมา (Opening Stock)</b> ในทะเบียนวัตถุดิบและฐานข้อมูลของระบบให้อัตโนมัติ
               </p>
             </div>
           </label>

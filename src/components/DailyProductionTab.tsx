@@ -942,26 +942,6 @@ export const DailyProductionTab: React.FC<DailyProductionTabProps> = ({
           </div>
         </div>
       )}
-
-      {/* Info Card on ARRAYFORMULA */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 text-xs text-slate-800 shadow-xs flex items-start gap-3">
-        <Sparkles className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-        <div className="flex-1">
-          <h4 className="font-bold text-slate-900 mb-1">
-            เทคนิค Google Sheets ARRAYFORMULA ใน Tab Daily_Production
-          </h4>
-          <p className="text-slate-600 leading-relaxed">
-            ใน Google Sheets รวมยอดส่งสาขา A + B อัตโนมัติโดยใส่สูตรไว้ที่ Row 1 ในส่วน Header:
-          </p>
-          <div className="mt-2">
-            <code className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 font-mono text-[11px] block text-slate-800 max-w-xl">
-              <span className="text-blue-600 font-bold">Total_Dispatched (Row 1):</span>
-              <br />
-              {`={"Total_Dispatched"; ARRAYFORMULA(IF(A2:A="", "", N(D2:D) + N(E2:E)))}`}
-            </code>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };

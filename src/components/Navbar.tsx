@@ -40,7 +40,7 @@ interface NavbarProps {
   isSyncing: boolean;
   onOpenSupabaseModal: () => void;
   onOpenLineNotifyModal: () => void;
-  onOpenFormulaModal: () => void;
+  onOpenFormulaModal?: () => void;
   onOpenExportExcelModal: () => void;
   onOpenNewTxModal: () => void;
   onOpenNewProdModal: () => void;

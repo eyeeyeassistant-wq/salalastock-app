@@ -66,7 +66,7 @@ interface MonthlyDashboardTabProps {
   isSupabaseConnected?: boolean;
   onOpenSupabaseModal?: () => void;
   onOpenLineNotifyModal?: () => void;
-  onOpenFormulaGuide: () => void;
+  onOpenFormulaGuide?: () => void;
   onOpenExportExcelModal?: () => void;
   onSelectMaterialDetail: (rmCode: string) => void;
   onNavigateToTab: (tabName: any) => void;

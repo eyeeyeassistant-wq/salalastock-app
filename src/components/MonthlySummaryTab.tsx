@@ -23,7 +23,6 @@ import {
   Layers,
   ArrowUpDown,
   Download,
-  HelpCircle,
   ClipboardCheck,
   FileSpreadsheet,
   Calendar,
@@ -43,7 +42,7 @@ interface MonthlySummaryTabProps {
   productions: DailyProduction[];
   transactions: StockTransaction[];
   stockCountRecords?: MonthlyStockCountRecord[];
-  onOpenFormulaGuide: () => void;
+  onOpenFormulaGuide?: () => void;
   onOpenStockCountModal?: () => void;
   onSelectMaterialDetail: (rmCode: string) => void;
   onShowNotification?: (msg: string) => void;
@@ -433,14 +432,6 @@ export const MonthlySummaryTab: React.FC<MonthlySummaryTabProps> = ({
               <span>เช็คสต็อกจริงสิ้นเดือน</span>
             </button>
           )}
-
-          <button
-            onClick={onOpenFormulaGuide}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-300 hover:bg-slate-100 transition-colors"
-          >
-            <HelpCircle className="w-3.5 h-3.5 text-blue-600" />
-            <span>สูตร Google Sheets</span>
-          </button>
         </div>
       </div>
 

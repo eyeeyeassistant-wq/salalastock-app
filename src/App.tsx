@@ -77,7 +77,6 @@ import { StockTransactionsTab } from './components/StockTransactionsTab';
 import { MasterMaterialsTab } from './components/MasterMaterialsTab';
 import { BOMRecipeTab } from './components/BOMRecipeTab';
 import { MasterBranchesTab } from './components/MasterBranchesTab';
-import { FormulaGuideModal } from './components/FormulaGuideModal';
 import { SupabaseSyncModal } from './components/SupabaseSyncModal';
 import { LineNotifyModal } from './components/LineNotifyModal';
 import { NewTransactionModal } from './components/NewTransactionModal';
@@ -374,7 +373,6 @@ export default function App() {
   }, []);
 
   // Modal Visibility State
-  const [isFormulaModalOpen, setIsFormulaModalOpen] = useState(false);
   const [isNewTxModalOpen, setIsNewTxModalOpen] = useState(false);
   const [initialTxType, setInitialTxType] = useState<TransactionType>('Receive');
   const [editingTransaction, setEditingTransaction] = useState<{
@@ -1378,7 +1376,6 @@ export default function App() {
         isSyncing={isSyncing}
         onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
         onOpenLineNotifyModal={() => setIsLineNotifyModalOpen(true)}
-        onOpenFormulaModal={() => setIsFormulaModalOpen(true)}
         onOpenExportExcelModal={() => setIsExportExcelModalOpen(true)}
         onOpenNewTxModal={() => {
           setInitialTxType('Receive');
@@ -1423,7 +1420,6 @@ export default function App() {
             isSupabaseConnected={isSupabaseConnected}
             onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
             onOpenLineNotifyModal={() => setIsLineNotifyModalOpen(true)}
-            onOpenFormulaGuide={() => setIsFormulaModalOpen(true)}
             onOpenExportExcelModal={() => setIsExportExcelModalOpen(true)}
             onSelectMaterialDetail={(code) => setSelectedMaterialDetail(code)}
             onNavigateToTab={(tabName) => setActiveTab(tabName)}
@@ -1451,7 +1447,6 @@ export default function App() {
             productions={productions}
             transactions={transactions}
             stockCountRecords={stockCountRecords}
-            onOpenFormulaGuide={() => setIsFormulaModalOpen(true)}
             onOpenStockCountModal={() => setActiveTab('stock-count')}
             onSelectMaterialDetail={(code) => setSelectedMaterialDetail(code)}
             onShowNotification={showNotification}
@@ -1593,13 +1588,7 @@ export default function App() {
             ระบบจัดการสต๊อกสินค้าและเปรียบเทียบการใช้วัตถุดิบ (Stock & Variance Tracking System)
           </div>
           <div className="flex items-center gap-4">
-            <span>เชื่อมโยงสูตรอัตโนมัติ 5 Tab</span>
-            <button
-              onClick={() => setIsFormulaModalOpen(true)}
-              className="text-blue-600 hover:underline font-medium"
-            >
-              ดูสูตร Google Sheets
-            </button>
+            <span>คำนวณและตัดสต็อกอัตโนมัติ Real-time</span>
           </div>
         </div>
       </footer>
@@ -1625,11 +1614,6 @@ export default function App() {
           productions: productions.length,
           transactions: transactions.length,
         }}
-      />
-
-      <FormulaGuideModal
-        isOpen={isFormulaModalOpen}
-        onClose={() => setIsFormulaModalOpen(false)}
       />
 
       {isNewTxModalOpen && (
