@@ -272,8 +272,14 @@ export function sanitizeTransactions(transactions: StockTransaction[] = []): Sto
           seenSignatures.set(sig, updated);
           seenIds.add(String(t.id));
         }
+        return;
       }
-      return; // Skip duplicate clone!
+      // If both have distinct IDs, they are distinct transaction entries
+      if (t.id && existing.id && String(t.id) !== String(existing.id)) {
+        // Allow both transactions
+      } else {
+        return; // Skip duplicate clone!
+      }
     }
 
     const cleanTx: StockTransaction = {
@@ -285,6 +291,11 @@ export function sanitizeTransactions(transactions: StockTransaction[] = []): Sto
       Qty: qty,
       Recorder: recorder,
       Note: note,
+      Unit_Price: t.Unit_Price !== undefined && t.Unit_Price !== null ? Number(t.Unit_Price) : undefined,
+      Total_Amount: t.Total_Amount !== undefined && t.Total_Amount !== null ? Number(t.Total_Amount) : undefined,
+      Reason_Type: t.Reason_Type || undefined,
+      Lot_No: t.Lot_No ? String(t.Lot_No).trim() : undefined,
+      Expiry_Date: t.Expiry_Date ? String(t.Expiry_Date).trim() : undefined,
     };
 
     if (cleanTx.id) seenIds.add(String(cleanTx.id));

@@ -1068,11 +1068,12 @@ export default function App() {
 
     // Save to Database
     try {
+      const originalTempId = fullTx.id;
       const savedId = await saveStockTransaction(fullTx);
       if (savedId) {
         fullTx = { ...fullTx, id: savedId };
         setTransactions((prev) => {
-          const updated = prev.map((t) => (t === fullTx || (t.id && t.id === fullTx.id) ? { ...t, id: savedId } : t));
+          const updated = prev.map((t) => (t.id === originalTempId || t.id === savedId ? { ...t, id: savedId } : t));
           localStorage.setItem('stock_transactions', JSON.stringify(updated));
           return updated;
         });
@@ -1631,18 +1632,20 @@ export default function App() {
         onClose={() => setIsFormulaModalOpen(false)}
       />
 
-      <NewTransactionModal
-        isOpen={isNewTxModalOpen}
-        onClose={() => {
-          setIsNewTxModalOpen(false);
-          setEditingTransaction(null);
-        }}
-        materials={materials}
-        summaries={summaries}
-        initialType={initialTxType}
-        initialData={editingTransaction?.data || null}
-        onSave={handleSaveTransaction}
-      />
+      {isNewTxModalOpen && (
+        <NewTransactionModal
+          isOpen={isNewTxModalOpen}
+          onClose={() => {
+            setIsNewTxModalOpen(false);
+            setEditingTransaction(null);
+          }}
+          materials={materials}
+          summaries={summaries}
+          initialType={initialTxType}
+          initialData={editingTransaction?.data || null}
+          onSave={handleSaveTransaction}
+        />
+      )}
 
       <NewProductionModal
         isOpen={isNewProdModalOpen}

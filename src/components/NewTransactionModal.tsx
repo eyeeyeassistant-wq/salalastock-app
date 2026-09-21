@@ -129,7 +129,9 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
     return summaries.find((s) => s.RM_Code === rmCode);
   }, [summaries, rmCode]);
 
-  const currentEnding = currentSummary ? currentSummary.Ending_Stock : (selectedMaterial?.Opening_Stock || 0);
+  const currentEnding = currentSummary
+    ? Number(currentSummary.Ending_Stock) || 0
+    : Number(selectedMaterial?.Opening_Stock) || 0;
   const unit = selectedMaterial ? selectedMaterial.Unit : '';
 
   // Parse entered quantity cleanly
@@ -139,12 +141,24 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
     return isNaN(val) ? 0 : val;
   }, [qtyStr]);
 
+  const numericUnitPrice = useMemo(() => {
+    if (!unitPriceStr) return 0;
+    const clean = unitPriceStr.replace(',', '.').trim();
+    const val = parseFloat(clean);
+    return isNaN(val) ? 0 : val;
+  }, [unitPriceStr]);
+
+  const totalAmount = useMemo(() => {
+    if (numericQty > 0 && numericUnitPrice > 0) {
+      return Number((numericQty * numericUnitPrice).toFixed(2));
+    }
+    return 0;
+  }, [numericQty, numericUnitPrice]);
+
   const projectedEnding =
     type === 'Receive' ? currentEnding + numericQty : currentEnding - numericQty;
 
-  const isLowProjected = selectedMaterial && projectedEnding <= selectedMaterial.Safety_Stock;
-
-  if (!isOpen) return null;
+  const isLowProjected = selectedMaterial && projectedEnding <= (selectedMaterial.Safety_Stock || 0);
 
   const handleSelectMaterial = (code: string) => {
     setRmCode(code);
@@ -156,16 +170,6 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
     setSearchMaterial('');
     setErrorMessage(null);
   };
-
-  const numericUnitPrice = useMemo(() => {
-    const clean = unitPriceStr.replace(',', '.').trim();
-    const val = parseFloat(clean);
-    return isNaN(val) ? 0 : val;
-  }, [unitPriceStr]);
-
-  const totalAmount = useMemo(() => {
-    return Number((numericQty * numericUnitPrice).toFixed(2));
-  }, [numericQty, numericUnitPrice]);
 
   const handleQuickAddQty = (amount: number) => {
     const current = numericQty;
@@ -205,6 +209,8 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
 
     onClose();
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">

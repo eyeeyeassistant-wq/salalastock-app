@@ -1507,7 +1507,7 @@ export async function saveStockTransaction(tx: StockTransaction): Promise<string
 
   let targetId: number | string | null = null;
 
-  // 1. If tx.id is numeric, verify whether it truly exists in Supabase
+  // 1. If tx.id is numeric, verify whether it truly exists in Supabase for editing
   if (tx.id && /^\d+$/.test(String(tx.id))) {
     const { data: byId } = await supabase
       .from('stock_transactions')
@@ -1519,33 +1519,8 @@ export async function saveStockTransaction(tx: StockTransaction): Promise<string
     }
   }
 
-  // 2. If no verified ID, check if this exact transaction already exists by attributes
-  if (!targetId) {
-    let checkQuery = supabase
-      .from('stock_transactions')
-      .select('id')
-      .eq('date', date)
-      .eq('type', type)
-      .eq('rm_code', rm_code)
-      .eq('qty', qty);
-
-    if (note) {
-      checkQuery = checkQuery.eq('note', note);
-    }
-
-    const { data: existingRows } = await checkQuery;
-    if (existingRows && existingRows.length > 0) {
-      targetId = existingRows[0].id;
-      // Clean up any extra duplicate rows in database if they were created earlier
-      if (existingRows.length > 1) {
-        const extraIds = existingRows.slice(1).map((r: any) => r.id);
-        await supabase.from('stock_transactions').delete().in('id', extraIds);
-      }
-    }
-  }
-
   const executeTxSave = async (pl: Record<string, any>): Promise<string> => {
-    // 3. Update if existing targetId found, or Insert if new
+    // 2. Update if existing targetId found, or Insert if new
     if (targetId) {
       const { data, error } = await supabase
         .from('stock_transactions')

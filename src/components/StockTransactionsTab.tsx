@@ -42,18 +42,23 @@ export const StockTransactionsTab: React.FC<StockTransactionsTabProps> = ({
 
   const filteredTransactions = transactions
     .filter((tx) => {
+      if (!tx) return false;
       if (typeFilter !== 'all' && tx.Type !== typeFilter) return false;
       if (materialFilter !== 'all' && tx.RM_Code !== materialFilter) return false;
 
       const term = searchTerm.toLowerCase();
       const matchSearch =
-        tx.RM_Code.toLowerCase().includes(term) ||
-        tx.Recorder.toLowerCase().includes(term) ||
-        tx.Note.toLowerCase().includes(term);
+        (tx.RM_Code || '').toLowerCase().includes(term) ||
+        (tx.Recorder || '').toLowerCase().includes(term) ||
+        (tx.Note || '').toLowerCase().includes(term);
 
       return matchSearch;
     })
-    .sort((a, b) => new Date(b.Date).getTime() - new Date(a.Date).getTime());
+    .sort((a, b) => {
+      const timeB = b?.Date ? new Date(b.Date).getTime() : 0;
+      const timeA = a?.Date ? new Date(a.Date).getTime() : 0;
+      return (isNaN(timeB) ? 0 : timeB) - (isNaN(timeA) ? 0 : timeA);
+    });
 
   const getMaterialName = (rmCode: string) => {
     const mat = materials.find((m) => m.RM_Code === rmCode);
@@ -242,15 +247,15 @@ export const StockTransactionsTab: React.FC<StockTransactionsTabProps> = ({
                     >
                       <div className="font-bold">
                         {isReceive ? '+' : '-'}
-                        {tx.Qty.toLocaleString()}
+                        {Number(tx.Qty || 0).toLocaleString()}
                       </div>
-                      {tx.Total_Amount ? (
+                      {tx.Total_Amount !== undefined && tx.Total_Amount !== null ? (
                         <div className="text-[11px] font-normal text-slate-500">
-                          ฿{tx.Total_Amount.toLocaleString()}
+                          ฿{Number(tx.Total_Amount).toLocaleString()}
                         </div>
-                      ) : tx.Unit_Price ? (
+                      ) : tx.Unit_Price !== undefined && tx.Unit_Price !== null ? (
                         <div className="text-[11px] font-normal text-slate-500">
-                          @฿{tx.Unit_Price}
+                          @฿{Number(tx.Unit_Price).toLocaleString()}
                         </div>
                       ) : null}
                     </td>
