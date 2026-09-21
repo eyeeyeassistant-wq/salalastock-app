@@ -249,15 +249,6 @@ export const StockTransactionsTab: React.FC<StockTransactionsTabProps> = ({
                         {isReceive ? '+' : '-'}
                         {Number(tx.Qty || 0).toLocaleString()}
                       </div>
-                      {tx.Total_Amount !== undefined && tx.Total_Amount !== null ? (
-                        <div className="text-[11px] font-normal text-slate-500">
-                          ฿{Number(tx.Total_Amount).toLocaleString()}
-                        </div>
-                      ) : tx.Unit_Price !== undefined && tx.Unit_Price !== null ? (
-                        <div className="text-[11px] font-normal text-slate-500">
-                          @฿{Number(tx.Unit_Price).toLocaleString()}
-                        </div>
-                      ) : null}
                     </td>
                     <td className="px-4 py-3.5 text-slate-700 text-xs sm:text-sm">
                       <div className="flex items-center gap-1.5">
