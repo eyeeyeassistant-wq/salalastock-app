@@ -92,10 +92,11 @@ export const NEW_TABLES_SQL_SCHEMA = `-- =======================================
 -- นำโค้ดนี้ไปรันใน Supabase SQL Editor ได้ทันที
 -- ============================================================
 
--- เพิ่มคอลัมน์ระบบตรวจสอบย้อนหลังและการควบคุมต้นทุน (Auditability & Traceability)
+-- เพิ่มคอลัมน์ระบบตรวจสอบย้อนหลัง (Auditability & Traceability)
 ALTER TABLE daily_production ADD COLUMN IF NOT EXISTS producer_name TEXT DEFAULT '';
-ALTER TABLE master_materials ADD COLUMN IF NOT EXISTS unit_price NUMERIC DEFAULT 0;
-ALTER TABLE master_materials ADD COLUMN IF NOT EXISTS supplier_name TEXT DEFAULT '';
+-- เอา unit_price และ supplier_name ออกจาก master_materials ตามความต้องการของผู้ใช้
+ALTER TABLE master_materials DROP COLUMN IF EXISTS unit_price;
+ALTER TABLE master_materials DROP COLUMN IF EXISTS supplier_name;
 ALTER TABLE stock_transactions ADD COLUMN IF NOT EXISTS unit_price NUMERIC DEFAULT 0;
 ALTER TABLE stock_transactions ADD COLUMN IF NOT EXISTS total_amount NUMERIC DEFAULT 0;
 ALTER TABLE stock_transactions ADD COLUMN IF NOT EXISTS reason_type TEXT DEFAULT 'PRODUCTION';
@@ -193,11 +194,11 @@ CREATE TABLE IF NOT EXISTS master_materials (
   unit TEXT NOT NULL,
   opening_stock NUMERIC DEFAULT 0,
   safety_stock NUMERIC DEFAULT 0,
-  unit_price NUMERIC DEFAULT 0,
-  supplier_name TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE master_materials DROP COLUMN IF EXISTS unit_price;
+ALTER TABLE master_materials DROP COLUMN IF EXISTS supplier_name;
 
 -- 2. Table: bom_recipe
 CREATE TABLE IF NOT EXISTS bom_recipe (
@@ -387,11 +388,11 @@ CREATE TABLE IF NOT EXISTS master_materials (
   unit TEXT NOT NULL,
   opening_stock NUMERIC DEFAULT 0,
   safety_stock NUMERIC DEFAULT 0,
-  unit_price NUMERIC DEFAULT 0,
-  supplier_name TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE master_materials DROP COLUMN IF EXISTS unit_price;
+ALTER TABLE master_materials DROP COLUMN IF EXISTS supplier_name;
 
 -- 2. Table: bom_recipe (สูตรการผลิตมาตรฐาน BOM)
 CREATE TABLE IF NOT EXISTS bom_recipe (
@@ -485,8 +486,8 @@ CREATE INDEX IF NOT EXISTS idx_stock_tx_date ON stock_transactions(date);
 CREATE INDEX IF NOT EXISTS idx_stock_tx_rm_code ON stock_transactions(rm_code);
 
 -- อัปเกรดคอลัมน์ใหม่ใน master_materials และ stock_transactions
-ALTER TABLE master_materials ADD COLUMN IF NOT EXISTS unit_price NUMERIC DEFAULT 0;
-ALTER TABLE master_materials ADD COLUMN IF NOT EXISTS supplier_name TEXT DEFAULT '';
+ALTER TABLE master_materials DROP COLUMN IF EXISTS unit_price;
+ALTER TABLE master_materials DROP COLUMN IF EXISTS supplier_name;
 ALTER TABLE master_materials ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
 ALTER TABLE master_materials ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
@@ -665,9 +666,6 @@ SELECT
   mm.unit,
   mm.opening_stock,
   mm.safety_stock,
-  COALESCE(mm.unit_price, 0) AS unit_price,
-  COALESCE(mm.supplier_name, '') AS supplier_name,
-  ROUND(mm.opening_stock * COALESCE(mm.unit_price, 0), 2) AS opening_stock_value,
   mm.updated_at
 FROM master_materials mm
 ORDER BY mm.rm_code ASC;
@@ -871,8 +869,6 @@ export async function fetchMasterMaterials(): Promise<MasterMaterial[]> {
       Unit: row.unit,
       Opening_Stock: Number(row.opening_stock) || 0,
       Safety_Stock: Number(row.safety_stock) || 0,
-      Unit_Price: row.unit_price !== undefined && row.unit_price !== null ? Number(row.unit_price) : undefined,
-      Supplier_Name: row.supplier_name || undefined,
     }));
   } catch (err: any) {
     console.warn('Notice: Network error fetching master_materials, using local data:', err?.message || err);
@@ -891,31 +887,8 @@ export async function upsertMasterMaterial(mat: MasterMaterial): Promise<void> {
     updated_at: new Date().toISOString(),
   };
 
-  if (mat.Unit_Price !== undefined && !isNaN(Number(mat.Unit_Price))) {
-    payload.unit_price = Number(mat.Unit_Price);
-  }
-  if (mat.Supplier_Name !== undefined) {
-    payload.supplier_name = mat.Supplier_Name.trim();
-  }
-
   const { error } = await supabase.from('master_materials').upsert(payload, { onConflict: 'rm_code' });
   if (error) {
-    // If unit_price or supplier_name does not exist in schema yet, fallback cleanly
-    if (error.code === 'PGRST204') {
-      const basicPayload = {
-        rm_code: mat.RM_Code.trim().toUpperCase(),
-        rm_name: mat.RM_Name.trim(),
-        unit: mat.Unit.trim(),
-        opening_stock: Number(mat.Opening_Stock) || 0,
-        safety_stock: Number(mat.Safety_Stock) || 0,
-      };
-      const { error: retryErr } = await supabase.from('master_materials').upsert(basicPayload, { onConflict: 'rm_code' });
-      if (retryErr) {
-        console.error('Error upserting basic master_materials:', retryErr);
-        throw retryErr;
-      }
-      return;
-    }
     console.error('Error upserting master_materials:', error);
     throw error;
   }
@@ -1105,24 +1078,25 @@ export async function upsertBOMRecipe(recipe: BOMRecipe): Promise<{ id: string |
   }
 }
 
-export async function deleteBOMRecipe(idOrProductCode: string, rmCode?: string): Promise<void> {
+export async function deleteBOMRecipe(idOrProductCode: string | number, rmCode?: string): Promise<void> {
   const supabase = getSupabaseClient();
+  const idStr = String(idOrProductCode || '');
   let query = supabase.from('bom_recipe').delete();
   if (rmCode) {
     query = query
-      .eq('product_code', idOrProductCode.trim().toUpperCase())
+      .eq('product_code', idStr.trim().toUpperCase())
       .eq('rm_code', rmCode.trim().toUpperCase());
-  } else if (/^\d+$/.test(idOrProductCode)) {
-    query = query.eq('id', Number(idOrProductCode));
+  } else if (/^\d+$/.test(idStr)) {
+    query = query.eq('id', Number(idStr));
   } else {
     // If composite id like 'bom_P001_RM001', parse and delete safely
-    const parts = idOrProductCode.split('_');
+    const parts = idStr.split('_');
     if (parts.length >= 3 && parts[0] === 'bom') {
       const p = parts[1];
       const rm = parts.slice(2).join('_');
       query = query.eq('product_code', p).eq('rm_code', rm);
     } else {
-      query = query.eq('product_code', idOrProductCode.trim().toUpperCase());
+      query = query.eq('product_code', idStr.trim().toUpperCase());
     }
   }
   const { error } = await query;
@@ -1362,22 +1336,23 @@ export async function saveDailyProduction(prod: DailyProduction): Promise<string
   }
 }
 
-export async function deleteDailyProduction(idOrDate: string, productCode?: string): Promise<void> {
+export async function deleteDailyProduction(idOrDate: string | number, productCode?: string): Promise<void> {
   const supabase = getSupabaseClient();
+  const idStr = String(idOrDate || '');
   let query = supabase.from('daily_production').delete();
 
   if (productCode) {
-    query = query.eq('date', idOrDate).eq('product_code', productCode.trim().toUpperCase());
-  } else if (/^\d+$/.test(idOrDate)) {
-    query = query.eq('id', Number(idOrDate));
+    query = query.eq('date', idStr).eq('product_code', productCode.trim().toUpperCase());
+  } else if (/^\d+$/.test(idStr)) {
+    query = query.eq('id', Number(idStr));
   } else {
-    const parts = idOrDate.split('_');
+    const parts = idStr.split('_');
     if (parts.length >= 3 && parts[0] === 'prod') {
       const date = parts[1];
       const pCode = parts[2];
       query = query.eq('date', date).eq('product_code', pCode);
     } else {
-      query = query.eq('id', idOrDate);
+      query = query.eq('id', idStr);
     }
   }
 
@@ -1562,13 +1537,14 @@ export async function saveStockTransaction(tx: StockTransaction): Promise<string
   }
 }
 
-export async function deleteStockTransaction(id: string): Promise<void> {
+export async function deleteStockTransaction(id: string | number): Promise<void> {
   const supabase = getSupabaseClient();
+  const idStr = String(id || '');
   let query = supabase.from('stock_transactions').delete();
-  if (/^\d+$/.test(id)) {
-    query = query.eq('id', Number(id));
+  if (/^\d+$/.test(idStr)) {
+    query = query.eq('id', Number(idStr));
   } else {
-    query = query.eq('id', id);
+    query = query.eq('id', idStr);
   }
   const { error } = await query;
   if (error) {

@@ -10,7 +10,6 @@ import {
   AlertTriangle,
   ShoppingCart,
   Package,
-  Building2,
   ChevronDown,
   ChevronUp,
   FileText,
@@ -52,25 +51,14 @@ export const LineNotifyModal: React.FC<LineNotifyModalProps> = ({
   // Filter low stock items (Ending Stock <= Safety Stock)
   const lowStockItems = summaries.filter((s) => s.isLowStock);
 
-  // Map low stock items with master material pricing & supplier
+  // Map low stock items with deficit quantity
   const enrichedLowStockItems = lowStockItems.map((item) => {
-    const mat = materials.find(
-      (m) => (m.RM_Code || '').trim().toUpperCase() === (item.RM_Code || '').trim().toUpperCase()
-    );
     const deficitQty = Math.max(0, Number(item.Safety_Stock) - Number(item.Ending_Stock));
-    const unitPrice = mat?.Unit_Price || 0;
-    const estCost = deficitQty * unitPrice;
-
     return {
       ...item,
-      supplier: mat?.Supplier_Name || '',
-      unitPrice,
       deficitQty,
-      estCost,
     };
   });
-
-  const totalEstCost = enrichedLowStockItems.reduce((acc, curr) => acc + curr.estCost, 0);
 
   // Generate detailed formatted message for LINE / Notes
   const generateDetailedMessage = () => {
@@ -98,18 +86,9 @@ export const LineNotifyModal: React.FC<LineNotifyModalProps> = ({
       text += `${idx + 1}. [${item.RM_Code}] ${item.RM_Name}\n`;
       text += `   • คงเหลือ: ${item.Ending_Stock.toLocaleString()} ${item.Unit} (จุดเตือน: ${item.Safety_Stock.toLocaleString()} ${item.Unit})\n`;
       text += `   • ขาดอีกอย่างน้อย: 🔴 ${item.deficitQty.toLocaleString()} ${item.Unit}\n`;
-      if (item.supplier) {
-        text += `   • ร้าน/ซัพพลายเออร์: ${item.supplier}\n`;
-      }
-      if (item.unitPrice > 0) {
-        text += `   • ราคาประเมิน: ฿${item.estCost.toLocaleString()} (@฿${item.unitPrice}/${item.Unit})\n`;
-      }
     });
 
     text += `------------------------------------\n`;
-    if (totalEstCost > 0) {
-      text += `💰 ยอดสั่งซื้อประมาณการรวม: ฿${totalEstCost.toLocaleString()} บาท\n`;
-    }
     text += `💡 ข้อความจากระบบจัดการสต๊อกสินค้า`;
 
     return text;
@@ -230,11 +209,6 @@ export const LineNotifyModal: React.FC<LineNotifyModalProps> = ({
                     ? `พบวัตถุดิบใกล้หมดจำนวน ${lowStockItems.length} รายการที่ต้องสั่งเพิ่ม`
                     : 'สต็อกวัตถุดิบทุกรายการอยู่ในเกณฑ์ปลอดภัย (Normal)'}
                 </span>
-                {totalEstCost > 0 && (
-                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-white border border-rose-300 text-rose-700">
-                    ประมาณการ: ฿{totalEstCost.toLocaleString()}
-                  </span>
-                )}
               </h4>
               <p className="text-xs mt-1 text-slate-600 leading-relaxed">
                 {lowStockItems.length > 0
@@ -272,15 +246,6 @@ export const LineNotifyModal: React.FC<LineNotifyModalProps> = ({
                         <span>คงเหลือ: <strong className="text-rose-600 font-mono font-bold">{item.Ending_Stock.toLocaleString()} {item.Unit}</strong></span>
                         <span>•</span>
                         <span>จุดเตือน: <span className="font-mono">{item.Safety_Stock.toLocaleString()} {item.Unit}</span></span>
-                        {item.supplier && (
-                          <>
-                            <span>•</span>
-                            <span className="text-slate-600 flex items-center gap-0.5">
-                              <Building2 className="w-3 h-3 text-slate-400" />
-                              {item.supplier}
-                            </span>
-                          </>
-                        )}
                       </div>
                     </div>
 
@@ -288,11 +253,6 @@ export const LineNotifyModal: React.FC<LineNotifyModalProps> = ({
                       <span className="inline-block text-xs font-bold font-mono px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200">
                         ขาดอีก {item.deficitQty.toLocaleString()} {item.Unit}
                       </span>
-                      {item.estCost > 0 && (
-                        <div className="text-[11px] font-mono text-slate-500 mt-0.5">
-                          ~฿{item.estCost.toLocaleString()}
-                        </div>
-                      )}
                     </div>
                   </div>
                 ))}

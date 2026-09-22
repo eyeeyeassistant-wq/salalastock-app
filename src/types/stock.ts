@@ -5,8 +5,6 @@ export interface MasterMaterial {
   Unit: string;
   Opening_Stock: number;
   Safety_Stock: number;
-  Unit_Price?: number; // ราคาต้นทุนต่อหน่วย (บาท)
-  Supplier_Name?: string; // ซัพพลายเออร์ / ร้านค้าที่ซื้อ
 }
 
 export interface BOMRecipe {

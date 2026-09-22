@@ -195,7 +195,7 @@ export function exportAllDataToExcel({
     const rmCode = t.RM_Code.trim().toUpperCase();
     const mat = matMap.get(rmCode);
     const typeLabel = t.Type === 'Receive' ? 'รับเข้า (Receive)' : 'เบิกใช้จริง (Actual Usage)';
-    const unitPrice = t.Unit_Price ?? mat?.Unit_Price;
+    const unitPrice = t.Unit_Price;
     const totalAmount = t.Total_Amount ?? (unitPrice && t.Qty ? Number((t.Qty * unitPrice).toFixed(2)) : undefined);
     return {
       'ลำดับ': idx + 1,
@@ -257,8 +257,6 @@ export function exportAllDataToExcel({
     'รหัสวัตถุดิบ (RM_Code)': m.RM_Code,
     'ชื่อวัตถุดิบ': m.RM_Name,
     'หน่วยนับ': m.Unit,
-    'ราคาต่อหน่วย (Unit_Price)': m.Unit_Price ?? '-',
-    'ซัพพลายเออร์ (Supplier)': m.Supplier_Name || '-',
     'ยอดยกมาเริ่มต้น (Opening Stock)': m.Opening_Stock,
     'จุดเตือนสต็อกขั้นต่ำ (Safety Stock)': m.Safety_Stock,
   }));
@@ -412,7 +410,7 @@ export function exportStockTransactionsToExcel(
   const sortedTxs = [...transactions].sort((a, b) => b.Date.localeCompare(a.Date));
   const rows = sortedTxs.map((t, idx) => {
     const mat = matMap.get(t.RM_Code.trim().toUpperCase());
-    const unitPrice = t.Unit_Price ?? mat?.Unit_Price;
+    const unitPrice = t.Unit_Price;
     const totalAmount = t.Total_Amount ?? (unitPrice && t.Qty ? Number((t.Qty * unitPrice).toFixed(2)) : undefined);
     return {
       'ลำดับ': idx + 1,
